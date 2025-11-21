@@ -56,7 +56,8 @@ const world = {
   height: 900,
   centerX: 800,
   centerY: 450,
-  mapRadius: Math.min(1600, 900) / 2 - 60
+  mapRadius: (Math.min(1600, 900) / 2 - 60) * 3
+
 };
 seedItems(world.width, world.height);
 
