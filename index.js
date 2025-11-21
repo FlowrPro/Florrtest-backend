@@ -55,7 +55,8 @@ function broadcastPlayerUpdate(p) {
     hotbar: p.hotbar,
     username: p.username,
     orbitDist: p.orbitDist,
-    health: p.health // NEW
+    health: p.health,
+    invincibleUntil: p.invincibleUntil || 0 // NEW
   });
 }
 
@@ -101,7 +102,8 @@ io.on("connection", (socket) => {
     inventory: new Array(24).fill(null),
     username: null,
     orbitDist: 56,
-    health: 100 // NEW
+    health: 100,
+    invincibleUntil: 0      // NEW
   };
   players.set(id, player);
 
@@ -122,7 +124,8 @@ io.on("connection", (socket) => {
     hotbar: player.hotbar,
     username: player.username,
     orbitDist: player.orbitDist,
-    health: player.health
+    health: player.health,
+    invincibleUntil: player.invincibleUntil
   });
 
   // Movement
@@ -168,10 +171,10 @@ io.on("connection", (socket) => {
           color: it.color,
           damage: it.damage,
           health: it.health,
-          maxHealth: it.maxHealth,   // NEW
+          maxHealth: it.maxHealth,
           description: it.description,
-          reload: it.reload,         // NEW
-          reloadUntil: it.reloadUntil // NEW
+          reload: it.reload,
+          reloadUntil: it.reloadUntil
         };
         items.delete(itemId);
         socket.emit("inventory_update", p.inventory);
@@ -223,6 +226,7 @@ io.on("connection", (socket) => {
     p.x = world.centerX;
     p.y = world.centerY;
     p.health = 100;
+    p.invincibleUntil = Date.now() + 2000; // NEW: 2s invincibility
     broadcastPlayerUpdate(p);
     socket.emit("respawn_success", p);
   });
@@ -256,7 +260,10 @@ setInterval(() => {
           const petalY = p.y + (p.orbitDist || 56) * Math.sin(angle);
 
           const dist = distance(petalX, petalY, other.x, other.y);
-          if (dist < other.radius + 8) {
+          if (dist < other.radius + 8) { 
+            // Skip damage if target is invincible
+            if (other.invincibleUntil && now < other.invincibleUntil) return;
+
             // Apply body damage to player
             other.health -= 20;
             if (other.health <= 0) {
@@ -267,10 +274,10 @@ setInterval(() => {
               broadcastPlayerUpdate(other);
             }
 
-            // Petal health check
+            // Petal health check (petal takes 20 damage on hit)
             if (20 >= item.health) {
               item.reloadUntil = now + item.reload;
-              item.health = item.maxHealth; // reset after respawn
+              item.health = item.maxHealth; // will be full when it reappears after reload
             } else {
               item.health -= 20;
             }
@@ -290,4 +297,5 @@ const PORT = process.env.PORT || 8080;
 httpServer.listen(PORT, () => {
   console.log(`Server running on :${PORT}`);
 });
+
 
