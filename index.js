@@ -32,6 +32,9 @@ function seedItems(worldW, worldH) {
   items.clear();
   spawnItem(worldW / 2 + 60, worldH / 2, "cyan");
   spawnItem(worldW / 2 - 80, worldH / 2 + 40, "red");
+  spawnItem(worldW / 2 + 120, worldH / 2 - 50, "blue");
+  spawnItem(worldW / 2 - 150, worldH / 2 - 100, "purple");
+  spawnItem(worldW / 2, worldH / 2 + 120, "orange");
 }
 
 // Broadcast helpers
