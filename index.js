@@ -12,8 +12,8 @@ const io = new Server(httpServer, {
 });
 
 // --- World state (in-memory) ---
-const players = new Map(); // socketId -> { id, x, y, radius, speed, orbitAngle, orbitSpeed, hotbar:[], inventory:[] }
-const items = new Map();   // itemId -> { id, x, y, radius, color, name }
+const players = new Map(); // socketId -> player object
+const items = new Map();   // itemId -> item
 
 // Helpers
 function spawnItem(x, y, color = "cyan") {
@@ -44,7 +44,8 @@ function broadcastPlayerUpdate(p) {
     radius: p.radius,
     orbitAngle: p.orbitAngle,
     orbitSpeed: p.orbitSpeed,
-    hotbar: p.hotbar
+    hotbar: p.hotbar,
+    username: p.username // NEW
   });
 }
 
@@ -63,25 +64,24 @@ io.on("connection", (socket) => {
   const id = socket.id;
 
   // Create player
-  // Pre-fill hotbar with 10 petals
-const starterColors = [
-  "cyan", "red", "blue", "purple", "orange",
-  "green", "yellow", "pink", "lime", "magenta"
-];
+  const starterColors = [
+    "cyan", "red", "blue", "purple", "orange",
+    "green", "yellow", "pink", "lime", "magenta"
+  ];
+  const hotbarItems = starterColors.map(c => ({ name: "Petal", color: c }));
 
-const hotbarItems = starterColors.map(c => ({ name: "Petal", color: c }));
-
-const player = {
-  id,
-  x: world.centerX,
-  y: world.centerY,
-  radius: 20,
-  speed: 3,
-  orbitAngle: 0,
-  orbitSpeed: 0.02,
-  hotbar: hotbarItems,                 // now full of 10 items
-  inventory: new Array(24).fill(null)
-};
+  const player = {
+    id,
+    x: world.centerX,
+    y: world.centerY,
+    radius: 20,
+    speed: 3,
+    orbitAngle: 0,
+    orbitSpeed: 0.02,
+    hotbar: hotbarItems,
+    inventory: new Array(24).fill(null),
+    username: null // NEW
+  };
   players.set(id, player);
 
   // Send world snapshot to the new player
@@ -98,7 +98,8 @@ const player = {
     x: player.x,
     y: player.y,
     radius: player.radius,
-    hotbar: player.hotbar
+    hotbar: player.hotbar,
+    username: player.username // NEW
   });
 
   // Movement
@@ -130,10 +131,8 @@ const player = {
     const it = items.get(itemId);
     if (!p || !it) return;
 
-    // Validate proximity
     const d = distance(p.x, p.y, it.x, it.y);
     if (d < p.radius + it.radius) {
-      // Place into first empty inventory slot
       const emptyIdx = p.inventory.findIndex(s => s === null);
       if (emptyIdx !== -1) {
         p.inventory[emptyIdx] = { name: it.name, color: it.color };
@@ -169,6 +168,14 @@ const player = {
     p.hotbar[hotbarIndex] = null;
     socket.emit("inventory_update", p.inventory);
     socket.emit("hotbar_update", p.hotbar);
+    broadcastPlayerUpdate(p);
+  });
+
+  // --- NEW: Set username ---
+  socket.on("set_username", ({ username }) => {
+    const p = players.get(id);
+    if (!p) return;
+    p.username = username;
     broadcastPlayerUpdate(p);
   });
 
