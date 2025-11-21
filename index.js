@@ -72,7 +72,7 @@ io.on("connection", (socket) => {
     id,
     x: world.centerX,
     y: world.centerY,
-    radius: 28,
+    radius: 20,   // <-- changed from 28 to 20
     speed: 3,
     orbitAngle: 0,
     orbitSpeed: 0.02,
@@ -111,16 +111,14 @@ io.on("connection", (socket) => {
       p.x = world.centerX + (world.mapRadius - p.radius) * Math.cos(angle);
       p.y = world.centerY + (world.mapRadius - p.radius) * Math.sin(angle);
     }
-    p.orbitAngle += p.orbitSpeed; // server-side angle increment
     broadcastPlayerUpdate(p);
   });
 
-  // Click orbit controls
+  // Orbit control (optional future use)
   socket.on("orbit_control", ({ state }) => {
     const p = players.get(id);
     if (!p) return;
     // Client decides visual distance; server only stores angle progression
-    // You can store state if you want authoritative control later
   });
 
   // Pickup request
@@ -177,6 +175,14 @@ io.on("connection", (socket) => {
     socket.broadcast.emit("player_leave", { id });
   });
 });
+
+// --- Continuous orbit updates ---
+setInterval(() => {
+  players.forEach(p => {
+    p.orbitAngle += p.orbitSpeed;
+    broadcastPlayerUpdate(p);
+  });
+}, 50); // update ~20 times per second
 
 // Health check
 app.get("/", (_req, res) => res.send("Florr backend OK"));
