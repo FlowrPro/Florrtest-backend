@@ -68,17 +68,25 @@ io.on("connection", (socket) => {
   const id = socket.id;
 
   // Create player
-  const player = {
-    id,
-    x: world.centerX,
-    y: world.centerY,
-    radius: 20,   // <-- changed from 28 to 20
-    speed: 3,
-    orbitAngle: 0,
-    orbitSpeed: 0.02,
-    hotbar: new Array(10).fill(null),
-    inventory: new Array(24).fill(null)
-  };
+  // Pre-fill hotbar with 10 petals
+const starterColors = [
+  "cyan", "red", "blue", "purple", "orange",
+  "green", "yellow", "pink", "lime", "magenta"
+];
+
+const hotbarItems = starterColors.map(c => ({ name: "Petal", color: c }));
+
+const player = {
+  id,
+  x: world.centerX,
+  y: world.centerY,
+  radius: 20,
+  speed: 3,
+  orbitAngle: 0,
+  orbitSpeed: 0.02,
+  hotbar: hotbarItems,                 // now full of 10 items
+  inventory: new Array(24).fill(null)
+};
   players.set(id, player);
 
   // Send world snapshot to the new player
