@@ -22,9 +22,9 @@ function spawnItem(x, y, color = "cyan") {
   const name = "Petal";
   items.set(id, { 
     id, x, y, radius, color, name,
-    damage: 5,                // NEW
-    health: 15,               // NEW
-    description: "Dropped petal with weaker stats." // NEW
+    damage: 5, 
+    health: 15, 
+    description: "Dropped petal with weaker stats."
   });
   return id;
 }
@@ -51,7 +51,8 @@ function broadcastPlayerUpdate(p) {
     orbitSpeed: p.orbitSpeed,
     hotbar: p.hotbar,
     username: p.username,
-    orbitDist: p.orbitDist // NEW
+    orbitDist: p.orbitDist,
+    health: p.health // NEW
   });
 }
 
@@ -62,7 +63,6 @@ const world = {
   centerX: 800,
   centerY: 450,
   mapRadius: (Math.min(1600, 900) / 2 - 60) * 3
-
 };
 seedItems(world.width, world.height);
 
@@ -70,18 +70,18 @@ seedItems(world.width, world.height);
 io.on("connection", (socket) => {
   const id = socket.id;
 
- const starterColors = [
-  "white","white","white","white","white",
-  "white","white","white","white","white"
-];
-
-const hotbarItems = starterColors.map(c => ({
-  name: "Petal",
-  color: c,
-  damage: 10,          // NEW
-  health: 25,          // NEW
-  description: "Basic starter petal." // NEW
-}));
+  // Create player
+  const starterColors = [
+    "white", "white", "white", "white", "white",
+    "white", "white", "white", "white", "white"
+  ];
+  const hotbarItems = starterColors.map(c => ({
+    name: "Petal",
+    color: c,
+    damage: 10,
+    health: 25,
+    description: "Basic starter petal."
+  }));
 
   const player = {
     id,
@@ -94,7 +94,8 @@ const hotbarItems = starterColors.map(c => ({
     hotbar: hotbarItems,
     inventory: new Array(24).fill(null),
     username: null,
-    orbitDist: 56 // NEW
+    orbitDist: 56,
+    health: 100 // NEW
   };
   players.set(id, player);
 
@@ -114,7 +115,8 @@ const hotbarItems = starterColors.map(c => ({
     radius: player.radius,
     hotbar: player.hotbar,
     username: player.username,
-    orbitDist: player.orbitDist
+    orbitDist: player.orbitDist,
+    health: player.health
   });
 
   // Movement
@@ -151,7 +153,13 @@ const hotbarItems = starterColors.map(c => ({
     if (d < p.radius + it.radius) {
       const emptyIdx = p.inventory.findIndex(s => s === null);
       if (emptyIdx !== -1) {
-        p.inventory[emptyIdx] = { name: it.name, color: it.color };
+        p.inventory[emptyIdx] = {
+          name: it.name,
+          color: it.color,
+          damage: it.damage,
+          health: it.health,
+          description: it.description
+        };
         items.delete(itemId);
         socket.emit("inventory_update", p.inventory);
         broadcastItems();
