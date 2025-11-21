@@ -45,7 +45,8 @@ function broadcastPlayerUpdate(p) {
     orbitAngle: p.orbitAngle,
     orbitSpeed: p.orbitSpeed,
     hotbar: p.hotbar,
-    username: p.username // NEW
+    username: p.username,
+    orbitDist: p.orbitDist // NEW
   });
 }
 
@@ -80,7 +81,8 @@ io.on("connection", (socket) => {
     orbitSpeed: 0.02,
     hotbar: hotbarItems,
     inventory: new Array(24).fill(null),
-    username: null // NEW
+    username: null,
+    orbitDist: 56 // NEW
   };
   players.set(id, player);
 
@@ -99,7 +101,8 @@ io.on("connection", (socket) => {
     y: player.y,
     radius: player.radius,
     hotbar: player.hotbar,
-    username: player.username // NEW
+    username: player.username,
+    orbitDist: player.orbitDist
   });
 
   // Movement
@@ -118,11 +121,12 @@ io.on("connection", (socket) => {
     broadcastPlayerUpdate(p);
   });
 
-  // Orbit control (optional future use)
-  socket.on("orbit_control", ({ state }) => {
+  // Orbit control
+  socket.on("orbit_control", ({ orbitDist }) => {
     const p = players.get(id);
     if (!p) return;
-    // Client decides visual distance; server only stores angle progression
+    p.orbitDist = orbitDist;
+    broadcastPlayerUpdate(p);
   });
 
   // Pickup request
@@ -171,7 +175,7 @@ io.on("connection", (socket) => {
     broadcastPlayerUpdate(p);
   });
 
-  // --- NEW: Set username ---
+  // Set username
   socket.on("set_username", ({ username }) => {
     const p = players.get(id);
     if (!p) return;
