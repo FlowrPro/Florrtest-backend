@@ -260,28 +260,32 @@ setInterval(() => {
           const petalY = p.y + (p.orbitDist || 56) * Math.sin(angle);
 
           const dist = distance(petalX, petalY, other.x, other.y);
-          if (dist < other.radius + 8) { 
-            // Skip damage if target is invincible
-            if (other.invincibleUntil && now < other.invincibleUntil) return;
+          if (dist < other.radius + 8) {
+  // Skip if target is dead
+  if (other.health <= 0) return;
 
-            // Apply body damage to player
-            other.health -= 20;
-            if (other.health <= 0) {
-              other.health = 0;
-              broadcastPlayerUpdate(other);
-              io.to(other.id).emit("player_dead");
-            } else {
-              broadcastPlayerUpdate(other);
-            }
+  // Skip if target is invincible
+  if (other.invincibleUntil && now < other.invincibleUntil) return;
 
-            // Petal health check (petal takes 20 damage on hit)
-            if (20 >= item.health) {
-              item.reloadUntil = now + item.reload;
-              item.health = item.maxHealth; // will be full when it reappears after reload
-            } else {
-              item.health -= 20;
-            }
-          }
+  // Apply body damage to player
+  other.health -= 20;
+  if (other.health <= 0) {
+    other.health = 0;
+    broadcastPlayerUpdate(other);
+    io.to(other.id).emit("player_dead");
+  } else {
+    broadcastPlayerUpdate(other);
+  }
+
+  // Petal health check (only if hitting a living body)
+  if (20 >= item.health) {
+    item.reloadUntil = now + item.reload;
+    item.health = item.maxHealth; // will be full when it reappears after reload
+  } else {
+    item.health -= 20;
+  }
+}
+          
         });
       }
     });
