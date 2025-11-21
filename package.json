@@ -1,12 +1,11 @@
 {
   "name": "florr-backend",
   "version": "1.0.0",
-  "main": "server/index.js",
+  "main": "index.js",
   "type": "module",
   "scripts": {
-  "start": "node index.js"
-}
-
+    "start": "node index.js"
+  },
   "dependencies": {
     "express": "^4.19.2",
     "cors": "^2.8.5",
