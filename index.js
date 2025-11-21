@@ -24,7 +24,10 @@ function spawnItem(x, y, color = "cyan") {
     id, x, y, radius, color, name,
     damage: 5, 
     health: 15, 
-    description: "Dropped petal with weaker stats."
+    maxHealth: 15,          // NEW
+    description: "Dropped petal with weaker stats.",
+    reload: 2000,           // NEW (2s reload)
+    reloadUntil: 0          // NEW
   });
   return id;
 }
@@ -80,7 +83,10 @@ io.on("connection", (socket) => {
     color: c,
     damage: 10,
     health: 25,
-    description: "Basic starter petal."
+    maxHealth: 25,          // NEW
+    description: "Basic starter petal.",
+    reload: 2000,           // NEW
+    reloadUntil: 0          // NEW
   }));
 
   const player = {
@@ -162,7 +168,10 @@ io.on("connection", (socket) => {
           color: it.color,
           damage: it.damage,
           health: it.health,
-          description: it.description
+          maxHealth: it.maxHealth,   // NEW
+          description: it.description,
+          reload: it.reload,         // NEW
+          reloadUntil: it.reloadUntil // NEW
         };
         items.delete(itemId);
         socket.emit("inventory_update", p.inventory);
@@ -281,3 +290,4 @@ const PORT = process.env.PORT || 8080;
 httpServer.listen(PORT, () => {
   console.log(`Server running on :${PORT}`);
 });
+
