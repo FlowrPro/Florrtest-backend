@@ -1,52 +1,184 @@
-const express = require("express");
-const http = require("http");
-const cors = require("cors");
-const { Server } = require("socket.io");
+import express from "express";
+import cors from "cors";
+import { createServer } from "http";
+import { Server } from "socket.io";
 
+// --- Server setup ---
 const app = express();
 app.use(cors());
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*"
-  }
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-const players = {};
+// --- World state (in-memory) ---
+const players = new Map(); // socketId -> { id, x, y, radius, speed, orbitAngle, orbitSpeed, hotbar:[], inventory:[] }
+const items = new Map();   // itemId -> { id, x, y, radius, color, name }
 
-io.on("connection", socket => {
-  console.log("Player connected:", socket.id);
+// Helpers
+function spawnItem(x, y, color = "cyan") {
+  const id = `item_${Math.random().toString(36).slice(2, 9)}`;
+  const radius = 8;
+  const name = "Petal";
+  items.set(id, { id, x, y, radius, color, name });
+  return id;
+}
+function distance(ax, ay, bx, by) {
+  return Math.hypot(ax - bx, ay - by);
+}
 
-  players[socket.id] = {
-    x: 0,
-    y: 0,
-    inventory: []
+// Initial items (you can randomize later)
+function seedItems(worldW, worldH) {
+  items.clear();
+  spawnItem(worldW / 2 + 60, worldH / 2, "cyan");
+  spawnItem(worldW / 2 - 80, worldH / 2 + 40, "red");
+}
+
+// Broadcast helpers
+function broadcastItems() {
+  io.emit("items_update", Array.from(items.values()));
+}
+function broadcastPlayerUpdate(p) {
+  io.emit("player_update", {
+    id: p.id,
+    x: p.x,
+    y: p.y,
+    radius: p.radius,
+    orbitAngle: p.orbitAngle,
+    orbitSpeed: p.orbitSpeed,
+    hotbar: p.hotbar
+  });
+}
+
+// --- Configurable world ---
+const world = {
+  width: 1600,
+  height: 900,
+  centerX: 800,
+  centerY: 450,
+  mapRadius: Math.min(1600, 900) / 2 - 60
+};
+seedItems(world.width, world.height);
+
+// --- Socket.IO handlers ---
+io.on("connection", (socket) => {
+  const id = socket.id;
+
+  // Create player
+  const player = {
+    id,
+    x: world.centerX,
+    y: world.centerY,
+    radius: 28,
+    speed: 3,
+    orbitAngle: 0,
+    orbitSpeed: 0.02,
+    hotbar: new Array(10).fill(null),
+    inventory: new Array(24).fill(null)
   };
+  players.set(id, player);
 
-  socket.emit("init", players[socket.id]);
+  // Send world snapshot to the new player
+  socket.emit("world_snapshot", {
+    world,
+    self: player,
+    players: Array.from(players.values()).filter(p => p.id !== id),
+    items: Array.from(items.values())
+  });
 
-  socket.on("move", ({ x, y }) => {
-    if (players[socket.id]) {
-      players[socket.id].x = x;
-      players[socket.id].y = y;
-      socket.broadcast.emit("playerMoved", { id: socket.id, x, y });
+  // Notify others
+  socket.broadcast.emit("player_join", {
+    id: player.id,
+    x: player.x,
+    y: player.y,
+    radius: player.radius,
+    hotbar: player.hotbar
+  });
+
+  // Movement
+  socket.on("move", ({ dx, dy }) => {
+    const p = players.get(id);
+    if (!p) return;
+    p.x += dx * p.speed;
+    p.y += dy * p.speed;
+    // Keep inside circular map
+    const d = distance(p.x, p.y, world.centerX, world.centerY);
+    if (d > world.mapRadius - p.radius) {
+      const angle = Math.atan2(p.y - world.centerY, p.x - world.centerX);
+      p.x = world.centerX + (world.mapRadius - p.radius) * Math.cos(angle);
+      p.y = world.centerY + (world.mapRadius - p.radius) * Math.sin(angle);
+    }
+    p.orbitAngle += p.orbitSpeed; // server-side angle increment
+    broadcastPlayerUpdate(p);
+  });
+
+  // Click orbit controls
+  socket.on("orbit_control", ({ state }) => {
+    const p = players.get(id);
+    if (!p) return;
+    // Client decides visual distance; server only stores angle progression
+    // You can store state if you want authoritative control later
+  });
+
+  // Pickup request
+  socket.on("pickup_request", ({ itemId }) => {
+    const p = players.get(id);
+    const it = items.get(itemId);
+    if (!p || !it) return;
+
+    // Validate proximity
+    const d = distance(p.x, p.y, it.x, it.y);
+    if (d < p.radius + it.radius) {
+      // Place into first empty inventory slot
+      const emptyIdx = p.inventory.findIndex(s => s === null);
+      if (emptyIdx !== -1) {
+        p.inventory[emptyIdx] = { name: it.name, color: it.color };
+        items.delete(itemId);
+        socket.emit("inventory_update", p.inventory);
+        broadcastItems();
+      }
     }
   });
 
-  socket.on("pickupItem", item => {
-    if (players[socket.id]) {
-      players[socket.id].inventory.push(item);
-      socket.emit("inventoryUpdate", players[socket.id].inventory);
-    }
+  // Equip from inventory to hotbar
+  socket.on("equip_request", ({ invIndex, hotbarIndex }) => {
+    const p = players.get(id);
+    if (!p) return;
+    const item = p.inventory[invIndex];
+    if (!item) return;
+    p.hotbar[hotbarIndex] = item;
+    p.inventory[invIndex] = null;
+    socket.emit("inventory_update", p.inventory);
+    socket.emit("hotbar_update", p.hotbar);
+    broadcastPlayerUpdate(p);
   });
 
+  // Unequip from hotbar to inventory
+  socket.on("unequip_request", ({ hotbarIndex }) => {
+    const p = players.get(id);
+    if (!p) return;
+    const item = p.hotbar[hotbarIndex];
+    if (!item) return;
+    const emptyIdx = p.inventory.findIndex(s => s === null);
+    if (emptyIdx === -1) return;
+    p.inventory[emptyIdx] = item;
+    p.hotbar[hotbarIndex] = null;
+    socket.emit("inventory_update", p.inventory);
+    socket.emit("hotbar_update", p.hotbar);
+    broadcastPlayerUpdate(p);
+  });
+
+  // Disconnect
   socket.on("disconnect", () => {
-    console.log("Player disconnected:", socket.id);
-    delete players[socket.id];
-    socket.broadcast.emit("playerDisconnected", socket.id);
+    players.delete(id);
+    socket.broadcast.emit("player_leave", { id });
   });
 });
 
-server.listen(3000, () => {
-  console.log("Server running on port 3000");
+// Health check
+app.get("/", (_req, res) => res.send("Florr backend OK"));
+
+const PORT = process.env.PORT || 8080;
+httpServer.listen(PORT, () => {
+  console.log(`Server running on :${PORT}`);
 });
