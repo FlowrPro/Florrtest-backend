@@ -123,6 +123,10 @@ io.on("connection", (socket) => {
   socket.on("move", ({ dx, dy }) => {
     const p = players.get(id);
     if (!p) return;
+
+    // 🚫 Prevent movement if player is dead
+    if (p.health <= 0) return;
+
     p.x += dx * p.speed;
     p.y += dy * p.speed;
     // Keep inside circular map
