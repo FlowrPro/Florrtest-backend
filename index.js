@@ -24,10 +24,10 @@ function spawnItem(x, y, color = "cyan") {
     id, x, y, radius, color, name,
     damage: 5, 
     health: 15, 
-    maxHealth: 15,          // NEW
+    maxHealth: 15,
     description: "Dropped petal with weaker stats.",
-    reload: 2000,           // NEW (2s reload)
-    reloadUntil: 0          // NEW
+    reload: 2000,
+    reloadUntil: 0
   });
   return id;
 }
@@ -56,7 +56,7 @@ function broadcastPlayerUpdate(p) {
     username: p.username,
     orbitDist: p.orbitDist,
     health: p.health,
-    invincibleUntil: p.invincibleUntil || 0 // NEW
+    invincibleUntil: p.invincibleUntil || 0
   });
 }
 
@@ -74,23 +74,8 @@ seedItems(world.width, world.height);
 io.on("connection", (socket) => {
   const id = socket.id;
 
-  // Create player
-  const starterColors = [
-    "white", "white", "white", "white", "white",
-    "white", "white", "white", "white", "white"
-  ];
-  const hotbarItems = starterColors.map(c => ({
-    name: "Petal",
-    color: c,
-    damage: 10,
-    health: 25,
-    maxHealth: 25,          // NEW
-    description: "Basic starter petal.",
-    reload: 2000,           // NEW
-    reloadUntil: 0          // NEW
-  }));
-
-  const player = {
+  // Pending player (not yet spawned in world)
+  const pendingPlayer = {
     id,
     x: world.centerX,
     y: world.centerY,
@@ -98,47 +83,71 @@ io.on("connection", (socket) => {
     speed: 3,
     orbitAngle: 0,
     orbitSpeed: 0.02,
-    hotbar: hotbarItems,
+    hotbar: [],
     inventory: new Array(24).fill(null),
     username: null,
     orbitDist: 56,
     health: 100,
-    invincibleUntil: 0      // NEW
+    invincibleUntil: 0
   };
-  players.set(id, player);
 
-  // Send world snapshot to the new player
+  // Send world snapshot but no self yet
   socket.emit("world_snapshot", {
     world,
-    self: player,
-    players: Array.from(players.values()).filter(p => p.id !== id),
+    self: null,
+    players: Array.from(players.values()),
     items: Array.from(items.values())
   });
 
-  // Notify others
-  socket.broadcast.emit("player_join", {
-    id: player.id,
-    x: player.x,
-    y: player.y,
-    radius: player.radius,
-    hotbar: player.hotbar,
-    username: player.username,
-    orbitDist: player.orbitDist,
-    health: player.health,
-    invincibleUntil: player.invincibleUntil
+  // Set username → spawn player
+  socket.on("set_username", ({ username }) => {
+    pendingPlayer.username = username;
+
+    // Give starter petals now
+    const starterColors = Array(10).fill("white");
+    pendingPlayer.hotbar = starterColors.map(c => ({
+      name: "Petal",
+      color: c,
+      damage: 10,
+      health: 25,
+      maxHealth: 25,
+      description: "Basic starter petal.",
+      reload: 2000,
+      reloadUntil: 0
+    }));
+
+    players.set(id, pendingPlayer);
+
+    // Send updated snapshot with self
+    socket.emit("world_snapshot", {
+      world,
+      self: pendingPlayer,
+      players: Array.from(players.values()).filter(p => p.id !== id),
+      items: Array.from(items.values())
+    });
+
+    // Notify others
+    socket.broadcast.emit("player_join", {
+      id: pendingPlayer.id,
+      x: pendingPlayer.x,
+      y: pendingPlayer.y,
+      radius: pendingPlayer.radius,
+      hotbar: pendingPlayer.hotbar,
+      username: pendingPlayer.username,
+      orbitDist: pendingPlayer.orbitDist,
+      health: pendingPlayer.health,
+      invincibleUntil: pendingPlayer.invincibleUntil
+    });
   });
 
   // Movement
   socket.on("move", ({ dx, dy }) => {
     const p = players.get(id);
     if (!p) return;
-
-    // 🚫 Prevent movement if player is dead
-    if (p.health <= 0) return;
+    if (p.health <= 0) return; // dead players can't move
 
     p.x += dx * p.speed;
     p.y += dy * p.speed;
-    // Keep inside circular map
     const d = distance(p.x, p.y, world.centerX, world.centerY);
     if (d > world.mapRadius - p.radius) {
       const angle = Math.atan2(p.y - world.centerY, p.x - world.centerX);
@@ -211,14 +220,6 @@ io.on("connection", (socket) => {
     broadcastPlayerUpdate(p);
   });
 
-  // Set username
-  socket.on("set_username", ({ username }) => {
-    const p = players.get(id);
-    if (!p) return;
-    p.username = username;
-    broadcastPlayerUpdate(p);
-  });
-
   // Respawn request
   socket.on("respawn_request", () => {
     const p = players.get(id);
@@ -226,7 +227,7 @@ io.on("connection", (socket) => {
     p.x = world.centerX;
     p.y = world.centerY;
     p.health = 100;
-    p.invincibleUntil = Date.now() + 2000; // NEW: 2s invincibility
+    p.invincibleUntil = Date.now() + 2000;
     broadcastPlayerUpdate(p);
     socket.emit("respawn_success", p);
   });
@@ -243,23 +244,17 @@ setInterval(() => {
   const now = Date.now();
 
   players.forEach(p => {
-    // Skip combat entirely if this player is dead
-    if (p.health <= 0) return;
-
+    if (p.health <= 0) return; // dead players inert
     p.orbitAngle += p.orbitSpeed;
 
-    // Combat: check petals vs other players
     players.forEach(other => {
       if (other.id === p.id) return;
-
-      // Skip if the target is dead
-      if (other.health <= 0) return;
+      if (other.health <= 0) return; // skip dead targets
 
       const equipped = p.hotbar.filter(i => i);
       if (equipped.length > 0) {
         const angleStep = (2 * Math.PI) / equipped.length;
         equipped.forEach((item, idx) => {
-          // Skip if petal is reloading
           if (item.reloadUntil && now < item.reloadUntil) return;
 
           const angle = p.orbitAngle + idx * angleStep;
@@ -268,15 +263,13 @@ setInterval(() => {
 
           const dist = distance(petalX, petalY, other.x, other.y);
           if (dist < other.radius + 8) {
-            // Skip if target is invincible
             if (other.invincibleUntil && now < other.invincibleUntil) return;
 
-            // Apply body damage to player
             other.health -= 20;
             if (other.health <= 0) {
               other.health = 0;
               broadcastPlayerUpdate(other);
-              io.to(other.id).emit("player_dead");
+               io.to(other.id).emit("player_dead");
             } else {
               broadcastPlayerUpdate(other);
             }
@@ -296,6 +289,7 @@ setInterval(() => {
     broadcastPlayerUpdate(p);
   });
 }, 50); // update ~20 times per second
+
 // Health check
 app.get("/", (_req, res) => res.send("Florr backend OK"));
 
@@ -303,5 +297,6 @@ const PORT = process.env.PORT || 8080;
 httpServer.listen(PORT, () => {
   console.log(`Server running on :${PORT}`);
 });
+
 
 
