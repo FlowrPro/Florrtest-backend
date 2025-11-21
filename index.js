@@ -243,11 +243,18 @@ setInterval(() => {
   const now = Date.now();
 
   players.forEach(p => {
+    // Skip combat entirely if this player is dead
+    if (p.health <= 0) return;
+
     p.orbitAngle += p.orbitSpeed;
 
     // Combat: check petals vs other players
     players.forEach(other => {
       if (other.id === p.id) return;
+
+      // Skip if the target is dead
+      if (other.health <= 0) return;
+
       const equipped = p.hotbar.filter(i => i);
       if (equipped.length > 0) {
         const angleStep = (2 * Math.PI) / equipped.length;
@@ -261,31 +268,27 @@ setInterval(() => {
 
           const dist = distance(petalX, petalY, other.x, other.y);
           if (dist < other.radius + 8) {
-  // Skip if target is dead
-  if (other.health <= 0) return;
+            // Skip if target is invincible
+            if (other.invincibleUntil && now < other.invincibleUntil) return;
 
-  // Skip if target is invincible
-  if (other.invincibleUntil && now < other.invincibleUntil) return;
+            // Apply body damage to player
+            other.health -= 20;
+            if (other.health <= 0) {
+              other.health = 0;
+              broadcastPlayerUpdate(other);
+              io.to(other.id).emit("player_dead");
+            } else {
+              broadcastPlayerUpdate(other);
+            }
 
-  // Apply body damage to player
-  other.health -= 20;
-  if (other.health <= 0) {
-    other.health = 0;
-    broadcastPlayerUpdate(other);
-    io.to(other.id).emit("player_dead");
-  } else {
-    broadcastPlayerUpdate(other);
-  }
-
-  // Petal health check (only if hitting a living body)
-  if (20 >= item.health) {
-    item.reloadUntil = now + item.reload;
-    item.health = item.maxHealth; // will be full when it reappears after reload
-  } else {
-    item.health -= 20;
-  }
-}
-          
+            // Petal health check (only if hitting a living body)
+            if (20 >= item.health) {
+              item.reloadUntil = now + item.reload;
+              item.health = item.maxHealth; // will be full when it reappears after reload
+            } else {
+              item.health -= 20;
+            }
+          }
         });
       }
     });
@@ -293,7 +296,6 @@ setInterval(() => {
     broadcastPlayerUpdate(p);
   });
 }, 50); // update ~20 times per second
-
 // Health check
 app.get("/", (_req, res) => res.send("Florr backend OK"));
 
