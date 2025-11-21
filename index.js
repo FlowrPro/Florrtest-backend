@@ -223,6 +223,8 @@ io.on("connection", (socket) => {
 
 // --- Continuous orbit updates + combat ---
 setInterval(() => {
+  const now = Date.now();
+
   players.forEach(p => {
     p.orbitAngle += p.orbitSpeed;
 
@@ -233,20 +235,31 @@ setInterval(() => {
       if (equipped.length > 0) {
         const angleStep = (2 * Math.PI) / equipped.length;
         equipped.forEach((item, idx) => {
+          // Skip if petal is reloading
+          if (item.reloadUntil && now < item.reloadUntil) return;
+
           const angle = p.orbitAngle + idx * angleStep;
           const petalX = p.x + (p.orbitDist || 56) * Math.cos(angle);
           const petalY = p.y + (p.orbitDist || 56) * Math.sin(angle);
 
           const dist = distance(petalX, petalY, other.x, other.y);
-          if (dist < other.radius + 8) { // 8 = petal radius
-            other.health -= item.damage;
+          if (dist < other.radius + 8) {
+            // Apply body damage to player
+            other.health -= 20;
             if (other.health <= 0) {
               other.health = 0;
               broadcastPlayerUpdate(other);
-              // Tell the dead player to show death screen
               io.to(other.id).emit("player_dead");
             } else {
               broadcastPlayerUpdate(other);
+            }
+
+            // Petal health check
+            if (20 >= item.health) {
+              item.reloadUntil = now + item.reload;
+              item.health = item.maxHealth; // reset after respawn
+            } else {
+              item.health -= 20;
             }
           }
         });
