@@ -67,8 +67,8 @@ io.on("connection", (socket) => {
 
   // Create player
   const starterColors = [
-    "cyan", "red", "blue", "purple", "orange",
-    "green", "yellow", "pink", "lime", "magenta"
+    "white", "white", "white", "white", "white",
+    "white", "white", "white", "white", "white"
   ];
   const hotbarItems = starterColors.map(c => ({ name: "Petal", color: c }));
 
