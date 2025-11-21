@@ -82,7 +82,7 @@ io.on("connection", (socket) => {
     radius: 20,
     speed: 3,
     orbitAngle: 0,
-    orbitSpeed: 0.02,
+    orbitSpeed: 0.08,
     hotbar: [],
     inventory: new Array(24).fill(null),
     username: null,
