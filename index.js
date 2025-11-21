@@ -203,6 +203,17 @@ io.on("connection", (socket) => {
     broadcastPlayerUpdate(p);
   });
 
+  // Respawn request
+  socket.on("respawn_request", () => {
+    const p = players.get(id);
+    if (!p) return;
+    p.x = world.centerX;
+    p.y = world.centerY;
+    p.health = 100;
+    broadcastPlayerUpdate(p);
+    socket.emit("respawn_success", p);
+  });
+
   // Disconnect
   socket.on("disconnect", () => {
     players.delete(id);
@@ -210,10 +221,38 @@ io.on("connection", (socket) => {
   });
 });
 
-// --- Continuous orbit updates ---
+// --- Continuous orbit updates + combat ---
 setInterval(() => {
   players.forEach(p => {
     p.orbitAngle += p.orbitSpeed;
+
+    // Combat: check petals vs other players
+    players.forEach(other => {
+      if (other.id === p.id) return;
+      const equipped = p.hotbar.filter(i => i);
+      if (equipped.length > 0) {
+        const angleStep = (2 * Math.PI) / equipped.length;
+        equipped.forEach((item, idx) => {
+          const angle = p.orbitAngle + idx * angleStep;
+          const petalX = p.x + (p.orbitDist || 56) * Math.cos(angle);
+          const petalY = p.y + (p.orbitDist || 56) * Math.sin(angle);
+
+          const dist = distance(petalX, petalY, other.x, other.y);
+          if (dist < other.radius + 8) { // 8 = petal radius
+            other.health -= item.damage;
+            if (other.health <= 0) {
+              other.health = 0;
+              broadcastPlayerUpdate(other);
+              // Tell the dead player to show death screen
+              io.to(other.id).emit("player_dead");
+            } else {
+              broadcastPlayerUpdate(other);
+            }
+          }
+        });
+      }
+    });
+
     broadcastPlayerUpdate(p);
   });
 }, 50); // update ~20 times per second
