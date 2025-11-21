@@ -20,7 +20,12 @@ function spawnItem(x, y, color = "cyan") {
   const id = `item_${Math.random().toString(36).slice(2, 9)}`;
   const radius = 8;
   const name = "Petal";
-  items.set(id, { id, x, y, radius, color, name });
+  items.set(id, { 
+    id, x, y, radius, color, name,
+    damage: 5,                // NEW
+    health: 15,               // NEW
+    description: "Dropped petal with weaker stats." // NEW
+  });
   return id;
 }
 function distance(ax, ay, bx, by) {
@@ -65,12 +70,18 @@ seedItems(world.width, world.height);
 io.on("connection", (socket) => {
   const id = socket.id;
 
-  // Create player
-  const starterColors = [
-    "white", "white", "white", "white", "white",
-    "white", "white", "white", "white", "white"
-  ];
-  const hotbarItems = starterColors.map(c => ({ name: "Petal", color: c }));
+ const starterColors = [
+  "white","white","white","white","white",
+  "white","white","white","white","white"
+];
+
+const hotbarItems = starterColors.map(c => ({
+  name: "Petal",
+  color: c,
+  damage: 10,          // NEW
+  health: 25,          // NEW
+  description: "Basic starter petal." // NEW
+}));
 
   const player = {
     id,
