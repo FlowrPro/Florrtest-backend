@@ -136,6 +136,20 @@ seedItems(world.width, world.height);
 // --- Socket.IO handlers ---
 io.on("connection", (socket) => {
   const id = socket.id;
+  let authedUser = null;
+
+  // Authentication step
+  socket.on("auth", ({ token }) => {
+    const user = users.find(u => u.sessionToken === token);
+    if (!user) {
+      socket.emit("auth_failed");
+      socket.disconnect();
+      return;
+    }
+    authedUser = user;
+    socket.emit("auth_success", { username: user.username });
+  });
+
   // Chat messages (server enforces username)
   socket.on("chat_message", ({ text }) => {
     const p = players.get(id);
@@ -168,9 +182,14 @@ io.on("connection", (socket) => {
     items: Array.from(items.values())
   });
 
-  // Set username → spawn player
+  // Set username → spawn player (only if authenticated)
   socket.on("set_username", ({ username }) => {
-    pendingPlayer.username = username;
+    if (!authedUser) {
+      socket.emit("error", { message: "Not authenticated" });
+      return;
+    }
+
+    pendingPlayer.username = authedUser.username;
 
     // Give starter petals now
     const starterColors = Array(10).fill("white");
@@ -263,7 +282,7 @@ io.on("connection", (socket) => {
     broadcastPlayerUpdate(p);
   });
 
-  socket.on("unequip_request", ({ hotbarIndex }) => {
+    socket.on("unequip_request", ({ hotbarIndex }) => {
     const p = players.get(id);
     if (!p) return;
     const item = p.hotbar[hotbarIndex];
