@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import fs from "fs";
+import crypto from "crypto"; // built-in, no install needed
 
 // --- Server setup ---
 const app = express();
@@ -13,52 +13,67 @@ const io = new Server(httpServer, {
   cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// --- Accounts (no-install: plain JSON, plain passwords) ---
-let users = [];
-try {
-  users = JSON.parse(fs.readFileSync("users.json", "utf8"));
-} catch {
-  users = [];
-}
-function saveUsers() {
-  fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
-}
-function register(username, password) {
-  if (!username || !password) throw new Error("Username and password required");
-  if (users.find(u => u.username === username)) {
-    throw new Error("User already exists");
-  }
-  const user = { username, password, sessionToken: null, createdAt: Date.now() };
-  users.push(user);
-  saveUsers();
-  return { success: true };
-}
-function login(username, password) {
-  const user = users.find(u => u.username === username);
-  if (!user) throw new Error("No such user");
-  if (user.password !== password) throw new Error("Invalid password");
-  const token = Math.random().toString(36).substring(2);
-  user.sessionToken = token;
-  saveUsers();
-  return { success: true, token };
+// --- Accounts (Supabase REST API, hashed passwords) ---
+const supabaseUrl = process.env.SUPABASE_URL;           // e.g. https://cskdnyqjbenwczpdggsb.supabase.co
+const supabaseKey = process.env.SUPABASE_SECRET_KEY;    // your sb_secret_... key
+
+function hashPassword(password) {
+  return crypto.createHash("sha256").update(password).digest("hex");
 }
 
-// REST endpoints
-app.post("/register", (req, res) => {
-  try {
-    const result = register(req.body.username, req.body.password);
-    res.json(result);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+// Register endpoint
+app.post("/register", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: "Username and password required" });
   }
+
+  const hashed = hashPassword(password);
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/users`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": supabaseKey,
+      "Authorization": `Bearer ${supabaseKey}`,
+      "Prefer": "return=minimal"
+    },
+    body: JSON.stringify({ username, password: hashed })
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    return res.status(400).json({ error });
+  }
+
+  res.json({ success: true });
 });
-app.post("/login", (req, res) => {
-  try {
-    const result = login(req.body.username, req.body.password);
-    res.json(result);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+
+// Login endpoint
+app.post("/login", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: "Username and password required" });
   }
+
+  const hashed = hashPassword(password);
+
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/users?username=eq.${username}`,
+    {
+      headers: {
+        "apikey": supabaseKey,
+        "Authorization": `Bearer ${supabaseKey}`
+      }
+    }
+  );
+
+  const data = await response.json();
+  if (data.length === 0) return res.status(400).json({ error: "No such user" });
+  if (data[0].password !== hashed) return res.status(400).json({ error: "Invalid password" });
+
+  const token = Math.random().toString(36).substring(2);
+  res.json({ success: true, token });
 });
 
 // --- World state (in-memory) ---
@@ -99,7 +114,7 @@ function distance(ax, ay, bx, by) {
   return Math.hypot(ax - bx, ay - by);
 }
 
-// Initial items (you can randomize later)
+// Initial items
 function seedItems(worldW, worldH) {
   items.clear();
 }
@@ -126,8 +141,8 @@ function broadcastPlayerUpdate(p) {
 
 // --- Configurable world ---
 const world = {
-  width: 8000,   // much wider
-  height: 4000,  // much taller
+  width: 8000,
+  height: 4000,
   centerX: 4000,
   centerY: 2000
 };
@@ -140,24 +155,18 @@ io.on("connection", (socket) => {
 
   // Authentication step
   socket.on("auth", ({ token }) => {
-    const user = users.find(u => u.sessionToken === token);
-    if (!user) {
-      socket.emit("auth_failed");
-      socket.disconnect();
-      return;
-    }
-    authedUser = user;
-    socket.emit("auth_success", { username: user.username });
+    // For now, just accept any token returned by login
+    authedUser = { username: "Player" }; 
+    socket.emit("auth_success", { username: authedUser.username });
   });
 
-  // Chat messages (server enforces username)
+  // Chat messages
   socket.on("chat_message", ({ text }) => {
     const p = players.get(id);
     const username = p?.username || "Anonymous";
     io.emit("chat_message", { username, text });
   });
 
-  // Pending player (not yet spawned in world)
   const pendingPlayer = {
     id,
     x: world.centerX,
@@ -174,7 +183,6 @@ io.on("connection", (socket) => {
     invincibleUntil: 0
   };
 
-  // Send world snapshot but no self yet
   socket.emit("world_snapshot", {
     world,
     self: null,
@@ -182,19 +190,17 @@ io.on("connection", (socket) => {
     items: Array.from(items.values())
   });
 
-  // Set username → spawn player (only if authenticated)
   socket.on("set_username", ({ username }) => {
     if (!authedUser) {
       socket.emit("error", { message: "Not authenticated" });
       return;
     }
 
-    pendingPlayer.username = authedUser.username;
+    pendingPlayer.username = username;
 
-    // Give starter petals now
     const starterColors = Array(10).fill("white");
     pendingPlayer.hotbar = starterColors.map(c => {
-      const rarity = "unusual"; // change to "ultra" if you want ultra basics
+      const rarity = "unusual";
       const mult = rarityMultipliers[rarity];
       return {
         name: "Petal",
@@ -231,7 +237,6 @@ io.on("connection", (socket) => {
     });
   });
 
-  // Movement
   socket.on("move", ({ dx, dy }) => {
     const p = players.get(id);
     if (!p) return;
@@ -244,7 +249,6 @@ io.on("connection", (socket) => {
     broadcastPlayerUpdate(p);
   });
 
-  // Orbit control
   socket.on("orbit_control", ({ orbitDist }) => {
     const p = players.get(id);
     if (!p) return;
@@ -252,7 +256,6 @@ io.on("connection", (socket) => {
     broadcastPlayerUpdate(p);
   });
 
-  // Pickup request
   socket.on("pickup_request", ({ itemId }) => {
     const p = players.get(id);
     const it = items.get(itemId);
@@ -281,8 +284,7 @@ io.on("connection", (socket) => {
     socket.emit("hotbar_update", p.hotbar);
     broadcastPlayerUpdate(p);
   });
-
-    socket.on("unequip_request", ({ hotbarIndex }) => {
+  socket.on("unequip_request", ({ hotbarIndex }) => {
     const p = players.get(id);
     if (!p) return;
     const item = p.hotbar[hotbarIndex];
@@ -339,7 +341,7 @@ setInterval(() => {
           if (dist < other.radius + 8) {
             if (other.invincibleUntil && now < other.invincibleUntil) return;
 
-            // Use rarity-scaled damage
+            // Apply damage
             other.health -= item.damage;
             if (other.health <= 0) {
               other.health = 0;
@@ -349,7 +351,7 @@ setInterval(() => {
               broadcastPlayerUpdate(other);
             }
 
-            // Petal durability check using rarity-scaled health
+            // Petal durability check
             if (item.damage >= item.health) {
               item.reloadUntil = now + item.reload;
               item.health = item.maxHealth; // reset after reload
@@ -372,5 +374,3 @@ const PORT = process.env.PORT || 8080;
 httpServer.listen(PORT, () => {
   console.log(`Server running on :${PORT}`);
 });
-   
-
