@@ -154,11 +154,42 @@ io.on("connection", (socket) => {
   let authedUser = null;
 
   // Authentication step
-  socket.on("auth", ({ token }) => {
-    // For now, just accept any token returned by login
-    authedUser = { username: "Player" }; 
+socket.on("auth", async ({ token, username }) => {
+  try {
+    // Look up the user in Supabase by username
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/users?username=eq.${username}`,
+      {
+        headers: {
+          "apikey": supabaseKey,
+          "Authorization": `Bearer ${supabaseKey}`
+        }
+      }
+    );
+
+    const data = await response.json();
+    if (data.length === 0) {
+      socket.emit("auth_failed");
+      socket.disconnect();
+      return;
+    }
+
+    // For now, just check that the client sent *some* token.
+    // Later you can store the token in Supabase and compare here.
+    if (!token) {
+      socket.emit("auth_failed");
+      socket.disconnect();
+      return;
+    }
+
+    authedUser = { username: data[0].username };
     socket.emit("auth_success", { username: authedUser.username });
-  });
+  } catch (err) {
+    console.error("Auth error:", err);
+    socket.emit("auth_failed");
+    socket.disconnect();
+  }
+});
 
   // Chat messages
   socket.on("chat_message", ({ text }) => {
