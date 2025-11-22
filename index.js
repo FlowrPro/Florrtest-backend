@@ -272,22 +272,25 @@ socket.on("auth", async ({ token, username }) => {
 
     pendingPlayer.username = username;
 
-    const starterColors = Array(10).fill("white");
-    pendingPlayer.hotbar = starterColors.map(c => {
-      const rarity = "unusual";
-      const mult = rarityMultipliers[rarity];
-      return {
-        name: "Petal",
-        color: c,
-        damage: 10 * mult,
-        health: 25 * mult,
-        maxHealth: 25 * mult,
-        description: `${rarity} starter petal.`,
-        reload: 2000,
-        reloadUntil: 0,
-        rarity
-      };
-    });
+    // Only give starter petals if hotbar is empty (new player)
+if (!pendingPlayer.hotbar || pendingPlayer.hotbar.length === 0) {
+  const starterColors = Array(10).fill("white");
+  pendingPlayer.hotbar = starterColors.map(c => {
+    const rarity = "unusual";
+    const mult = rarityMultipliers[rarity];
+    return {
+      name: "Petal",
+      color: c,
+      damage: 10 * mult,
+      health: 25 * mult,
+      maxHealth: 25 * mult,
+      description: `${rarity} starter petal.`,
+      reload: 2000,
+      reloadUntil: 0,
+      rarity
+    };
+  });
+}
 
     players.set(id, pendingPlayer);
 
