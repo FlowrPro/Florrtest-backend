@@ -187,6 +187,9 @@ async function savePlayerState(username, inventory, hotbar) {
   }
 }
 
+// Track active players globally (username -> socket.id)
+const activePlayers = new Map();
+
 // --- Socket.IO handlers ---
 io.on("connection", (socket) => {
   const id = socket.id;
@@ -209,44 +212,56 @@ io.on("connection", (socket) => {
     invincibleUntil: 0
   };
 
-  // Authentication step
-socket.on("auth", async ({ token, username }) => {
-  try {
-    const response = await fetch(
-      `${supabaseUrl}/rest/v1/users?username=eq.${encodeURIComponent(username)}`,
-      {
-        headers: {
-          "apikey": supabaseKey,
-          "Authorization": `Bearer ${supabaseKey}`
-        }
+  // --- Authentication step ---
+  socket.on("auth", async ({ token, username }) => {
+    try {
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/users?username=eq.${encodeURIComponent(username)}`,
+        { headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` } }
+      );
+      const data = await response.json();
+
+      if (data.length === 0) {
+        socket.emit("auth_failed");
+        return;
       }
-    );
 
-    const data = await response.json();
+      const storedToken = data[0].sessiontoken;
+      if (!token || storedToken !== token) {
+        socket.emit("auth_failed");
+        return;
+      }
 
-    if (data.length === 0) {
+      // ✅ Prevent duplicate logins
+      if (activePlayers.has(username)) {
+        socket.emit("auth_failed", { reason: "already_logged_in" });
+        socket.disconnect();
+        return;
+      }
+
+      // ✅ Mark this user as active
+      activePlayers.set(username, socket.id);
+      authedUser = { username: data[0].username };
+
+      // Restore saved inventory/hotbar if present
+      pendingPlayer.inventory = data[0].inventory || new Array(24).fill(null);
+      pendingPlayer.hotbar = data[0].hotbar || [];
+
+      socket.emit("auth_success", { username: authedUser.username });
+    } catch (err) {
+      console.error("Auth error:", err);
       socket.emit("auth_failed");
-      return; // don't disconnect yet, just fail
     }
+  });
 
-    // ✅ Compare provided token with stored sessiontoken
-    const storedToken = data[0].sessiontoken; // adjust if your column name differs
-    if (!token || storedToken !== token) {
-      socket.emit("auth_failed");
-      return; // don't disconnect yet
+  // --- Disconnect cleanup ---
+  socket.on("disconnect", () => {
+    if (authedUser && activePlayers.get(authedUser.username) === socket.id) {
+      activePlayers.delete(authedUser.username);
+      // Optionally save state on disconnect
+      savePlayerState(authedUser.username, pendingPlayer.inventory, pendingPlayer.hotbar);
     }
-
-    authedUser = { username: data[0].username };
-
-    // Restore saved inventory/hotbar if present
-    pendingPlayer.inventory = data[0].inventory || new Array(24).fill(null);
-    pendingPlayer.hotbar = data[0].hotbar || [];
-
-    socket.emit("auth_success", { username: authedUser.username });
-  } catch (err) {
-    console.error("Auth error:", err);
-    socket.emit("auth_failed");
-  }
+  });
 });
 
   // Chat messages
