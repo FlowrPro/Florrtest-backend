@@ -402,7 +402,7 @@ socket.on("set_username", ({ username }) => {
     players.delete(id);
     socket.broadcast.emit("player_leave", { id });
   });
-
+});
 // --- Continuous orbit updates + combat ---
 setInterval(() => {
   const now = Date.now();
