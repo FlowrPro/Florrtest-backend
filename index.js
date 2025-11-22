@@ -58,6 +58,7 @@ app.post("/login", async (req, res) => {
 
   const hashed = hashPassword(password);
 
+  // Look up user by username
   const response = await fetch(
     `${supabaseUrl}/rest/v1/users?username=eq.${username}`,
     {
@@ -67,6 +68,33 @@ app.post("/login", async (req, res) => {
       }
     }
   );
+
+  const data = await response.json();
+  if (data.length === 0) return res.status(400).json({ error: "No such user" });
+  if (data[0].password !== hashed) return res.status(400).json({ error: "Invalid password" });
+
+  // Generate session token
+  const token = Math.random().toString(36).substring(2);
+
+  // Save token in Supabase
+  const patchRes = await fetch(`${supabaseUrl}/rest/v1/users?username=eq.${username}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": supabaseKey,
+      "Authorization": `Bearer ${supabaseKey}`
+    },
+    body: JSON.stringify({ sessionToken: token })
+  });
+
+  if (!patchRes.ok) {
+    const error = await patchRes.text();
+    return res.status(500).json({ error: "Failed to save session token: " + error });
+  }
+
+  // Return token to client
+  res.json({ success: true, token });
+});
 
   const data = await response.json();
   if (data.length === 0) return res.status(400).json({ error: "No such user" });
