@@ -169,6 +169,23 @@ const world = {
   centerY: 2000
 };
 seedItems(world.width, world.height);
+// --- Persistence helper ---
+async function savePlayerState(username, inventory, hotbar) {
+  if (!username) return; // safety check
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/users?username=eq.${username}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": supabaseKey,
+        "Authorization": `Bearer ${supabaseKey}`
+      },
+      body: JSON.stringify({ inventory, hotbar })
+    });
+  } catch (err) {
+    console.error("Failed to save player state:", err);
+  }
+}
 
 // --- Socket.IO handlers ---
 io.on("connection", (socket) => {
@@ -322,6 +339,8 @@ socket.on("auth", async ({ token, username }) => {
         items.delete(itemId);
         socket.emit("inventory_update", p.inventory);
         broadcastItems();
+              // Save to Supabase
+      savePlayerState(p.username, p.inventory, p.hotbar);
       }
     }
   });
@@ -336,6 +355,8 @@ socket.on("auth", async ({ token, username }) => {
     socket.emit("inventory_update", p.inventory);
     socket.emit("hotbar_update", p.hotbar);
     broadcastPlayerUpdate(p);
+          // Save to Supabase
+      savePlayerState(p.username, p.inventory, p.hotbar);
   });
   socket.on("unequip_request", ({ hotbarIndex }) => {
     const p = players.get(id);
@@ -349,6 +370,8 @@ socket.on("auth", async ({ token, username }) => {
     socket.emit("inventory_update", p.inventory);
     socket.emit("hotbar_update", p.hotbar);
     broadcastPlayerUpdate(p);
+          // Save to Supabase
+      savePlayerState(p.username, p.inventory, p.hotbar);
   });
 
   socket.on("respawn_request", () => {
