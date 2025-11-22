@@ -117,10 +117,10 @@ io.on("connection", (socket) => {
   socket.on("set_username", ({ username }) => {
     pendingPlayer.username = username;
 
-    // Give starter petals now (always common)
+    // Give starter petals now 
     const starterColors = Array(10).fill("white");
     pendingPlayer.hotbar = starterColors.map(c => {
-      const rarity = "common";
+      const rarity = "ultra";
       const mult = rarityMultipliers[rarity];
       return {
         name: "Petal",
