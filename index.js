@@ -96,13 +96,6 @@ app.post("/login", async (req, res) => {
   res.json({ success: true, token });
 });
 
-  const data = await response.json();
-  if (data.length === 0) return res.status(400).json({ error: "No such user" });
-  if (data[0].password !== hashed) return res.status(400).json({ error: "Invalid password" });
-
-  const token = Math.random().toString(36).substring(2);
-  res.json({ success: true, token });
-});
 
 // --- World state (in-memory) ---
 const players = new Map(); // socketId -> player object
