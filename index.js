@@ -126,7 +126,7 @@ io.on("connection", (socket) => {
     // Give starter petals now
     const starterColors = Array(10).fill("white");
     pendingPlayer.hotbar = starterColors.map(c => {
-      const rarity = "mythic"; // change to "ultra" if you want ultra basics
+      const rarity = "unusual"; // change to "ultra" if you want ultra basics
       const mult = rarityMultipliers[rarity];
       return {
         name: "Petal",
