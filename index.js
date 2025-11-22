@@ -3,7 +3,6 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import fs from "fs";
-import bcrypt from "bcrypt";
 
 // --- Server setup ---
 const app = express();
@@ -14,7 +13,7 @@ const io = new Server(httpServer, {
   cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// --- Accounts (basic JSON store) ---
+// --- Accounts (no-install: plain JSON, plain passwords) ---
 let users = [];
 try {
   users = JSON.parse(fs.readFileSync("users.json", "utf8"));
@@ -24,38 +23,38 @@ try {
 function saveUsers() {
   fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
 }
-async function register(username, password) {
+function register(username, password) {
+  if (!username || !password) throw new Error("Username and password required");
   if (users.find(u => u.username === username)) {
     throw new Error("User already exists");
   }
-  const hash = await bcrypt.hash(password, 10);
-  const user = { username, passwordHash: hash, sessionToken: null };
+  const user = { username, password, sessionToken: null, createdAt: Date.now() };
   users.push(user);
   saveUsers();
   return { success: true };
 }
-async function login(username, password) {
+function login(username, password) {
   const user = users.find(u => u.username === username);
   if (!user) throw new Error("No such user");
-  const match = await bcrypt.compare(password, user.passwordHash);
-  if (!match) throw new Error("Invalid password");
+  if (user.password !== password) throw new Error("Invalid password");
   const token = Math.random().toString(36).substring(2);
   user.sessionToken = token;
   saveUsers();
   return { success: true, token };
 }
+
 // REST endpoints
-app.post("/register", async (req, res) => {
+app.post("/register", (req, res) => {
   try {
-    const result = await register(req.body.username, req.body.password);
+    const result = register(req.body.username, req.body.password);
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
-app.post("/login", async (req, res) => {
+app.post("/login", (req, res) => {
   try {
-    const result = await login(req.body.username, req.body.password);
+    const result = login(req.body.username, req.body.password);
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -278,7 +277,7 @@ io.on("connection", (socket) => {
     broadcastPlayerUpdate(p);
   });
 
-    socket.on("respawn_request", () => {
+  socket.on("respawn_request", () => {
     const p = players.get(id);
     if (!p) return;
     p.x = world.centerX;
