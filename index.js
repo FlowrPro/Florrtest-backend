@@ -192,55 +192,7 @@ io.on("connection", (socket) => {
   const id = socket.id;
   let authedUser = null;
 
-  // Authentication step
-socket.on("auth", async ({ token, username }) => {
-  try {
-    // Look up the user in Supabase by username
-    const response = await fetch(
-      `${supabaseUrl}/rest/v1/users?username=eq.${username}`,
-      {
-        headers: {
-          "apikey": supabaseKey,
-          "Authorization": `Bearer ${supabaseKey}`
-        }
-      }
-    );
-
-    const data = await response.json();
-    if (data.length === 0) {
-      socket.emit("auth_failed");
-      socket.disconnect();
-      return;
-    }
-
-    // For now, just check that the client sent *some* token.
-    // Later you can store the token in Supabase and compare here.
-    if (!token) {
-      socket.emit("auth_failed");
-      socket.disconnect();
-      return;
-    }
-
-    authedUser = { username: data[0].username };
-    // Restore saved inventory/hotbar if present, else fall back
-    pendingPlayer.inventory = data[0].inventory || new Array(24).fill(null);
-    pendingPlayer.hotbar = data[0].hotbar || [];
-
-    socket.emit("auth_success", { username: authedUser.username });
-  } catch (err) {
-    console.error("Auth error:", err);
-    socket.emit("auth_failed");
-    socket.disconnect();
-  }
-});
-
-  // Chat messages
-  socket.on("chat_message", ({ text }) => {
-    const p = players.get(id);
-    const username = p?.username || "Anonymous";
-    io.emit("chat_message", { username, text });
-  });
-
+  // ✅ Create the player object immediately so it's defined before auth
   const pendingPlayer = {
     id,
     x: world.centerX,
@@ -257,12 +209,50 @@ socket.on("auth", async ({ token, username }) => {
     invincibleUntil: 0
   };
 
-  socket.emit("world_snapshot", {
-    world,
-    self: null,
-    players: Array.from(players.values()),
-    items: Array.from(items.values())
+  // Authentication step
+  socket.on("auth", async ({ token, username }) => {
+    try {
+      // Look up the user in Supabase by username
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/users?username=eq.${username}`,
+        {
+          headers: {
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`
+          }
+        }
+      );
+
+      const data = await response.json();
+      if (data.length === 0 || !token) {
+        socket.emit("auth_failed");
+        socket.disconnect();
+        return;
+      }
+
+      authedUser = { username: data[0].username };
+
+      // ✅ Now pendingPlayer exists, safe to restore
+      pendingPlayer.inventory = data[0].inventory || new Array(24).fill(null);
+      pendingPlayer.hotbar = data[0].hotbar || [];
+
+      socket.emit("auth_success", { username: authedUser.username });
+    } catch (err) {
+      console.error("Auth error:", err);
+      socket.emit("auth_failed");
+      socket.disconnect();
+    }
   });
+
+
+  // Chat messages
+  socket.on("chat_message", ({ text }) => {
+    const p = players.get(id);
+    const username = p?.username || "Anonymous";
+    io.emit("chat_message", { username, text });
+  });
+
+ 
 
 socket.on("set_username", ({ username }) => {
   if (!authedUser) {
