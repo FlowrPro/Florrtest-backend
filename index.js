@@ -319,28 +319,7 @@ socket.on("set_username", ({ username }) => {
   });
 });
 
-    players.set(id, pendingPlayer);
-
-    socket.emit("world_snapshot", {
-      world,
-      self: pendingPlayer,
-      players: Array.from(players.values()).filter(p => p.id !== id),
-      items: Array.from(items.values())
-    });
-
-    socket.broadcast.emit("player_join", {
-      id: pendingPlayer.id,
-      x: pendingPlayer.x,
-      y: pendingPlayer.y,
-      radius: pendingPlayer.radius,
-      hotbar: pendingPlayer.hotbar,
-      username: pendingPlayer.username,
-      orbitDist: pendingPlayer.orbitDist,
-      health: pendingPlayer.health,
-      invincibleUntil: pendingPlayer.invincibleUntil
-    });
-  });
-
+   
   socket.on("move", ({ dx, dy }) => {
     const p = players.get(id);
     if (!p) return;
