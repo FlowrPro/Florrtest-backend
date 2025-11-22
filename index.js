@@ -223,11 +223,18 @@ io.on("connection", (socket) => {
       );
 
       const data = await response.json();
-      if (data.length === 0 || !token) {
-        socket.emit("auth_failed");
-        socket.disconnect();
-        return;
-      }
+if (data.length === 0) {
+  socket.emit("auth_failed");
+  socket.disconnect();
+  return;
+}
+
+// ✅ Compare provided token with stored sessiontoken
+if (!token || data[0].sessiontoken !== token) {
+  socket.emit("auth_failed");
+  socket.disconnect();
+  return;
+}
 
       authedUser = { username: data[0].username };
 
