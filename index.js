@@ -76,11 +76,10 @@ function broadcastPlayerUpdate(p) {
 
 // --- Configurable world ---
 const world = {
-  width: 1600,
-  height: 900,
-  centerX: 800,
-  centerY: 450,
-  mapRadius: (Math.min(1600, 900) / 2 - 60) * 3
+  width: 8000,   // much wider
+  height: 4000,  // much taller
+  centerX: 4000,
+  centerY: 2000
 };
 seedItems(world.width, world.height);
 
@@ -171,12 +170,8 @@ io.on("connection", (socket) => {
 
     p.x += dx * p.speed;
     p.y += dy * p.speed;
-    const d = distance(p.x, p.y, world.centerX, world.centerY);
-    if (d > world.mapRadius - p.radius) {
-      const angle = Math.atan2(p.y - world.centerY, p.x - world.centerX);
-      p.x = world.centerX + (world.mapRadius - p.radius) * Math.cos(angle);
-      p.y = world.centerY + (world.mapRadius - p.radius) * Math.sin(angle);
-    }
+    p.x = Math.max(p.radius, Math.min(world.width - p.radius, p.x));
+p.y = Math.max(p.radius, Math.min(world.height - p.radius, p.y));
     broadcastPlayerUpdate(p);
   });
 
