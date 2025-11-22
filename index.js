@@ -117,10 +117,10 @@ io.on("connection", (socket) => {
   socket.on("set_username", ({ username }) => {
     pendingPlayer.username = username;
 
-    // Give starter petals now 
+    // Give starter petals now
     const starterColors = Array(10).fill("white");
     pendingPlayer.hotbar = starterColors.map(c => {
-      const rarity = "ultra";
+      const rarity = "common"; // change to "ultra" if you want ultra basics
       const mult = rarityMultipliers[rarity];
       return {
         name: "Petal",
@@ -128,7 +128,7 @@ io.on("connection", (socket) => {
         damage: 10 * mult,
         health: 25 * mult,
         maxHealth: 25 * mult,
-        description: "Basic starter petal.",
+        description: `${rarity} starter petal.`,
         reload: 2000,
         reloadUntil: 0,
         rarity
@@ -137,7 +137,6 @@ io.on("connection", (socket) => {
 
     players.set(id, pendingPlayer);
 
-    // Send updated snapshot with self
     socket.emit("world_snapshot", {
       world,
       self: pendingPlayer,
@@ -145,7 +144,6 @@ io.on("connection", (socket) => {
       items: Array.from(items.values())
     });
 
-    // Notify others
     socket.broadcast.emit("player_join", {
       id: pendingPlayer.id,
       x: pendingPlayer.x,
@@ -163,7 +161,7 @@ io.on("connection", (socket) => {
   socket.on("move", ({ dx, dy }) => {
     const p = players.get(id);
     if (!p) return;
-    if (p.health <= 0) return; // dead players can't move
+    if (p.health <= 0) return;
 
     p.x += dx * p.speed;
     p.y += dy * p.speed;
@@ -194,17 +192,7 @@ io.on("connection", (socket) => {
     if (d < p.radius + it.radius) {
       const emptyIdx = p.inventory.findIndex(s => s === null);
       if (emptyIdx !== -1) {
-        p.inventory[emptyIdx] = {
-          name: it.name,
-          color: it.color,
-          damage: it.damage,
-          health: it.health,
-          maxHealth: it.maxHealth,
-          description: it.description,
-          reload: it.reload,
-          reloadUntil: it.reloadUntil,
-          rarity: it.rarity
-        };
+        p.inventory[emptyIdx] = { ...it };
         items.delete(itemId);
         socket.emit("inventory_update", p.inventory);
         broadcastItems();
@@ -212,7 +200,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Equip from inventory to hotbar
   socket.on("equip_request", ({ invIndex, hotbarIndex }) => {
     const p = players.get(id);
     if (!p) return;
@@ -225,7 +212,6 @@ io.on("connection", (socket) => {
     broadcastPlayerUpdate(p);
   });
 
-  // Unequip from hotbar to inventory
   socket.on("unequip_request", ({ hotbarIndex }) => {
     const p = players.get(id);
     if (!p) return;
@@ -240,7 +226,6 @@ io.on("connection", (socket) => {
     broadcastPlayerUpdate(p);
   });
 
-  // Respawn request
   socket.on("respawn_request", () => {
     const p = players.get(id);
     if (!p) return;
@@ -252,7 +237,6 @@ io.on("connection", (socket) => {
     socket.emit("respawn_success", p);
   });
 
-  // Disconnect
   socket.on("disconnect", () => {
     players.delete(id);
     socket.broadcast.emit("player_leave", { id });
@@ -264,12 +248,12 @@ setInterval(() => {
   const now = Date.now();
 
   players.forEach(p => {
-    if (p.health <= 0) return; // dead players inert
+    if (p.health <= 0) return;
     p.orbitAngle += p.orbitSpeed;
 
     players.forEach(other => {
       if (other.id === p.id) return;
-      if (other.health <= 0) return; // skip dead targets
+      if (other.health <= 0) return;
 
       const equipped = p.hotbar.filter(i => i);
       if (equipped.length > 0) {
@@ -285,8 +269,8 @@ setInterval(() => {
           if (dist < other.radius + 8) {
             if (other.invincibleUntil && now < other.invincibleUntil) return;
 
-            // NOTE: still using 20; you can switch to item.damage later for scaling
-            other.health -= 20;
+                        // Use rarity-scaled damage
+            other.health -= item.damage;
             if (other.health <= 0) {
               other.health = 0;
               broadcastPlayerUpdate(other);
@@ -295,12 +279,12 @@ setInterval(() => {
               broadcastPlayerUpdate(other);
             }
 
-            // Petal health check (only if hitting a living body)
-            if (20 >= item.health) {
+            // Petal durability check using rarity-scaled health
+            if (item.damage >= item.health) {
               item.reloadUntil = now + item.reload;
-              item.health = item.maxHealth; // will be full when it reappears after reload
+              item.health = item.maxHealth; // reset after reload
             } else {
-              item.health -= 20;
+              item.health -= item.damage;
             }
           }
         });
@@ -318,6 +302,5 @@ const PORT = process.env.PORT || 8080;
 httpServer.listen(PORT, () => {
   console.log(`Server running on :${PORT}`);
 });
-
 
 
