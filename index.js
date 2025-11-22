@@ -27,7 +27,9 @@ function spawnItem(x, y, color = "cyan") {
     maxHealth: 15,
     description: "Dropped petal with weaker stats.",
     reload: 2000,
-    reloadUntil: 0
+    reloadUntil: 0,
+    // add rarity so frontend can reflect slot background
+    rarity: "common"
   });
   return id;
 }
@@ -113,7 +115,9 @@ io.on("connection", (socket) => {
       maxHealth: 25,
       description: "Basic starter petal.",
       reload: 2000,
-      reloadUntil: 0
+      reloadUntil: 0,
+      // add rarity so frontend can style slot background
+      rarity: "common"
     }));
 
     players.set(id, pendingPlayer);
@@ -183,7 +187,9 @@ io.on("connection", (socket) => {
           maxHealth: it.maxHealth,
           description: it.description,
           reload: it.reload,
-          reloadUntil: it.reloadUntil
+          reloadUntil: it.reloadUntil,
+          // preserve rarity from item
+          rarity: it.rarity
         };
         items.delete(itemId);
         socket.emit("inventory_update", p.inventory);
