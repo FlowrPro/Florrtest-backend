@@ -84,7 +84,8 @@ app.post("/login", async (req, res) => {
       "apikey": supabaseKey,
       "Authorization": `Bearer ${supabaseKey}`
     },
-    body: JSON.stringify({ sessionToken: token })
+    body: JSON.stringify({ sessiontoken: token })
+
   });
 
   if (!patchRes.ok) {
