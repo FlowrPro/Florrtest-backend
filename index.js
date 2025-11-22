@@ -222,6 +222,10 @@ socket.on("auth", async ({ token, username }) => {
     }
 
     authedUser = { username: data[0].username };
+    // Restore saved inventory/hotbar if present, else fall back
+    pendingPlayer.inventory = data[0].inventory || new Array(24).fill(null);
+    pendingPlayer.hotbar = data[0].hotbar || [];
+
     socket.emit("auth_success", { username: authedUser.username });
   } catch (err) {
     console.error("Auth error:", err);
