@@ -413,7 +413,6 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     players.delete(id);
     socket.broadcast.emit("player_leave", { id });
-  });
 }); // <-- closes io.on("connection"
 // --- Continuous orbit updates + combat ---
 setInterval(() => {
