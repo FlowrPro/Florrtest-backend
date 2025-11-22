@@ -212,7 +212,6 @@ io.on("connection", (socket) => {
   // Authentication step
   socket.on("auth", async ({ token, username }) => {
     try {
-      // Look up the user in Supabase by username
       const response = await fetch(
         `${supabaseUrl}/rest/v1/users?username=eq.${username}`,
         {
@@ -244,7 +243,6 @@ io.on("connection", (socket) => {
     }
   });
 
-
   // Chat messages
   socket.on("chat_message", ({ text }) => {
     const p = players.get(id);
@@ -252,64 +250,63 @@ io.on("connection", (socket) => {
     io.emit("chat_message", { username, text });
   });
 
- 
+  // Set username
+  socket.on("set_username", ({ username }) => {
+    if (!authedUser) {
+      socket.emit("error", { message: "Not authenticated" });
+      return;
+    }
 
-socket.on("set_username", ({ username }) => {
-  if (!authedUser) {
-    socket.emit("error", { message: "Not authenticated" });
-    return;
-  }
+    pendingPlayer.username = username;
 
-  pendingPlayer.username = username;
+    // ✅ Only give starter petals if hotbar is empty (new player)
+    if (!pendingPlayer.hotbar || pendingPlayer.hotbar.length === 0) {
+      const starterColors = Array(10).fill("white");
+      pendingPlayer.hotbar = starterColors.map(c => {
+        const rarity = "unusual";
+        const mult = rarityMultipliers[rarity];
+        return {
+          name: "Petal",
+          color: c,
+          damage: 10 * mult,
+          health: 25 * mult,
+          maxHealth: 25 * mult,
+          description: `${rarity} starter petal.`,
+          reload: 2000,
+          reloadUntil: 0,
+          rarity
+        };
+      });
+    }
 
-  // ✅ Only give starter petals if hotbar is empty (new player)
-  if (!pendingPlayer.hotbar || pendingPlayer.hotbar.length === 0) {
-    const starterColors = Array(10).fill("white");
-    pendingPlayer.hotbar = starterColors.map(c => {
-      const rarity = "unusual";
-      const mult = rarityMultipliers[rarity];
-      return {
-        name: "Petal",
-        color: c,
-        damage: 10 * mult,
-        health: 25 * mult,
-        maxHealth: 25 * mult,
-        description: `${rarity} starter petal.`,
-        reload: 2000,
-        reloadUntil: 0,
-        rarity
-      };
+    // ✅ Only initialize inventory if empty (new player)
+    if (!pendingPlayer.inventory || pendingPlayer.inventory.length === 0) {
+      pendingPlayer.inventory = new Array(24).fill(null);
+    }
+
+    players.set(id, pendingPlayer);
+
+    socket.emit("world_snapshot", {
+      world,
+      self: pendingPlayer,
+      players: Array.from(players.values()).filter(p => p.id !== id),
+      items: Array.from(items.values())
     });
-  }
 
-  // ✅ Only initialize inventory if empty (new player)
-  if (!pendingPlayer.inventory || pendingPlayer.inventory.length === 0) {
-    pendingPlayer.inventory = new Array(24).fill(null);
-  }
-
-  players.set(id, pendingPlayer);
-
-  socket.emit("world_snapshot", {
-    world,
-    self: pendingPlayer,
-    players: Array.from(players.values()).filter(p => p.id !== id),
-    items: Array.from(items.values())
+    socket.broadcast.emit("player_join", {
+      id: pendingPlayer.id,
+      x: pendingPlayer.x,
+      y: pendingPlayer.y,
+      radius: pendingPlayer.radius,
+      hotbar: pendingPlayer.hotbar,
+      username: pendingPlayer.username,
+      orbitDist: pendingPlayer.orbitDist,
+      health: pendingPlayer.health,
+      invincibleUntil: pendingPlayer.invincibleUntil
+    });
   });
 
-  socket.broadcast.emit("player_join", {
-    id: pendingPlayer.id,
-    x: pendingPlayer.x,
-    y: pendingPlayer.y,
-    radius: pendingPlayer.radius,
-    hotbar: pendingPlayer.hotbar,
-    username: pendingPlayer.username,
-    orbitDist: pendingPlayer.orbitDist,
-    health: pendingPlayer.health,
-    invincibleUntil: pendingPlayer.invincibleUntil
-  });
-});
-
-   
+  // Movement
   socket.on("move", ({ dx, dy }) => {
     const p = players.get(id);
     if (!p) return;
@@ -322,6 +319,7 @@ socket.on("set_username", ({ username }) => {
     broadcastPlayerUpdate(p);
   });
 
+  // Orbit control
   socket.on("orbit_control", ({ orbitDist }) => {
     const p = players.get(id);
     if (!p) return;
@@ -329,6 +327,7 @@ socket.on("set_username", ({ username }) => {
     broadcastPlayerUpdate(p);
   });
 
+  // Pickup
   socket.on("pickup_request", ({ itemId }) => {
     const p = players.get(id);
     const it = items.get(itemId);
@@ -342,12 +341,12 @@ socket.on("set_username", ({ username }) => {
         items.delete(itemId);
         socket.emit("inventory_update", p.inventory);
         broadcastItems();
-              // Save to Supabase
-      savePlayerState(p.username, p.inventory, p.hotbar);
+        savePlayerState(p.username, p.inventory, p.hotbar);
       }
     }
   });
 
+  // Equip
   socket.on("equip_request", ({ invIndex, hotbarIndex }) => {
     const p = players.get(id);
     if (!p) return;
@@ -358,9 +357,10 @@ socket.on("set_username", ({ username }) => {
     socket.emit("inventory_update", p.inventory);
     socket.emit("hotbar_update", p.hotbar);
     broadcastPlayerUpdate(p);
-          // Save to Supabase
-      savePlayerState(p.username, p.inventory, p.hotbar);
+    savePlayerState(p.username, p.inventory, p.hotbar);
   });
+
+  // Unequip
   socket.on("unequip_request", ({ hotbarIndex }) => {
     const p = players.get(id);
     if (!p) return;
@@ -373,10 +373,10 @@ socket.on("set_username", ({ username }) => {
     socket.emit("inventory_update", p.inventory);
     socket.emit("hotbar_update", p.hotbar);
     broadcastPlayerUpdate(p);
-          // Save to Supabase
-      savePlayerState(p.username, p.inventory, p.hotbar);
+    savePlayerState(p.username, p.inventory, p.hotbar);
   });
 
+  // Respawn
   socket.on("respawn_request", () => {
     const p = players.get(id);
     if (!p) return;
@@ -388,11 +388,12 @@ socket.on("set_username", ({ username }) => {
     socket.emit("respawn_success", p);
   });
 
+  // Disconnect
   socket.on("disconnect", () => {
     players.delete(id);
     socket.broadcast.emit("player_leave", { id });
   });
-});
+}); // <-- closes io.on("connection"
 // --- Continuous orbit updates + combat ---
 setInterval(() => {
   const now = Date.now();
