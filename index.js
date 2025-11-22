@@ -14,8 +14,8 @@ const io = new Server(httpServer, {
 });
 
 // --- Accounts (Supabase REST API, hashed passwords) ---
-const supabaseUrl = process.env.SUPABASE_URL;           // e.g. https://cskdnyqjbenwczpdggsb.supabase.co
-const supabaseKey = process.env.SUPABASE_SECRET_KEY;    // your sb_secret_... key
+const supabaseUrl = process.env.SUPABASE_URL;           
+const supabaseKey = process.env.SUPABASE_SECRET_KEY;    
 
 function hashPassword(password) {
   return crypto.createHash("sha256").update(password).digest("hex");
@@ -58,7 +58,6 @@ app.post("/login", async (req, res) => {
 
   const hashed = hashPassword(password);
 
-  // Look up user by username
   const response = await fetch(
     `${supabaseUrl}/rest/v1/users?username=eq.${username}`,
     {
@@ -73,10 +72,8 @@ app.post("/login", async (req, res) => {
   if (data.length === 0) return res.status(400).json({ error: "No such user" });
   if (data[0].password !== hashed) return res.status(400).json({ error: "Invalid password" });
 
-  // Generate session token
   const token = Math.random().toString(36).substring(2);
 
-  // Save token in Supabase
   const patchRes = await fetch(`${supabaseUrl}/rest/v1/users?username=eq.${username}`, {
     method: "PATCH",
     headers: {
@@ -85,7 +82,6 @@ app.post("/login", async (req, res) => {
       "Authorization": `Bearer ${supabaseKey}`
     },
     body: JSON.stringify({ sessiontoken: token })
-
   });
 
   if (!patchRes.ok) {
@@ -93,16 +89,13 @@ app.post("/login", async (req, res) => {
     return res.status(500).json({ error: "Failed to save session token: " + error });
   }
 
-  // Return token to client
   res.json({ success: true, token });
 });
 
-
 // --- World state (in-memory) ---
-const players = new Map(); // socketId -> player object
-const items = new Map();   // itemId -> item
+const players = new Map(); 
+const items = new Map();   
 
-// Rarity multipliers
 const rarityMultipliers = {
   common: 1,
   unusual: 3,
@@ -113,7 +106,6 @@ const rarityMultipliers = {
   ultra: 729
 };
 
-// Helpers
 function spawnItem(x, y, color = "cyan", rarity = "common") {
   const id = `item_${Math.random().toString(36).slice(2, 9)}`;
   const radius = 8;
@@ -136,12 +128,10 @@ function distance(ax, ay, bx, by) {
   return Math.hypot(ax - bx, ay - by);
 }
 
-// Initial items
 function seedItems(worldW, worldH) {
   items.clear();
 }
 
-// Broadcast helpers
 function broadcastItems() {
   io.emit("items_update", Array.from(items.values()));
 }
@@ -161,7 +151,6 @@ function broadcastPlayerUpdate(p) {
   });
 }
 
-// --- Configurable world ---
 const world = {
   width: 8000,
   height: 4000,
@@ -169,9 +158,9 @@ const world = {
   centerY: 2000
 };
 seedItems(world.width, world.height);
-// --- Persistence helper ---
+
 async function savePlayerState(username, inventory, hotbar) {
-  if (!username) return; // safety check
+  if (!username) return;
   try {
     await fetch(`${supabaseUrl}/rest/v1/users?username=eq.${username}`, {
       method: "PATCH",
@@ -187,7 +176,7 @@ async function savePlayerState(username, inventory, hotbar) {
   }
 }
 
-// Track active players globally (username -> socket.id)
+// Track active players globally
 const activePlayers = new Map();
 
 // --- Socket.IO handlers ---
@@ -195,7 +184,6 @@ io.on("connection", (socket) => {
   const id = socket.id;
   let authedUser = null;
 
-  // ✅ Create the player object immediately so it's defined before auth
   const pendingPlayer = {
     id,
     x: world.centerX,
@@ -212,7 +200,7 @@ io.on("connection", (socket) => {
     invincibleUntil: 0
   };
 
-  // --- Authentication step ---
+  // --- Authentication ---
   socket.on("auth", async ({ token, username }) => {
     try {
       const response = await fetch(
@@ -232,18 +220,15 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // ✅ Prevent duplicate logins
       if (activePlayers.has(username)) {
         socket.emit("auth_failed", { reason: "already_logged_in" });
         socket.disconnect();
         return;
       }
 
-      // ✅ Mark this user as active
       activePlayers.set(username, socket.id);
       authedUser = { username: data[0].username };
 
-      // Restore saved inventory/hotbar if present
       pendingPlayer.inventory = data[0].inventory || new Array(24).fill(null);
       pendingPlayer.hotbar = data[0].hotbar || [];
 
@@ -254,24 +239,14 @@ io.on("connection", (socket) => {
     }
   });
 
-  // --- Disconnect cleanup ---
-  socket.on("disconnect", () => {
-    if (authedUser && activePlayers.get(authedUser.username) === socket.id) {
-      activePlayers.delete(authedUser.username);
-      // Optionally save state on disconnect
-      savePlayerState(authedUser.username, pendingPlayer.inventory, pendingPlayer.hotbar);
-    }
-  });
-});
-
-  // Chat messages
+  // --- Chat ---
   socket.on("chat_message", ({ text }) => {
     const p = players.get(id);
     const username = p?.username || "Anonymous";
     io.emit("chat_message", { username, text });
   });
 
-  // Set username
+  // --- Set username ---
   socket.on("set_username", ({ username }) => {
     if (!authedUser) {
       socket.emit("error", { message: "Not authenticated" });
@@ -280,7 +255,6 @@ io.on("connection", (socket) => {
 
     pendingPlayer.username = username;
 
-    // ✅ Only give starter petals if hotbar is empty (new player)
     if (!pendingPlayer.hotbar || pendingPlayer.hotbar.length === 0) {
       const starterColors = Array(10).fill("white");
       pendingPlayer.hotbar = starterColors.map(c => {
@@ -300,7 +274,6 @@ io.on("connection", (socket) => {
       });
     }
 
-    // ✅ Only initialize inventory if empty (new player)
     if (!pendingPlayer.inventory || pendingPlayer.inventory.length === 0) {
       pendingPlayer.inventory = new Array(24).fill(null);
     }
@@ -314,7 +287,7 @@ io.on("connection", (socket) => {
       items: Array.from(items.values())
     });
 
-    socket.broadcast.emit("player_join", {
+        socket.broadcast.emit("player_join", {
       id: pendingPlayer.id,
       x: pendingPlayer.x,
       y: pendingPlayer.y,
@@ -409,11 +382,17 @@ io.on("connection", (socket) => {
     socket.emit("respawn_success", p);
   });
 
-  // Disconnect
+  // Disconnect (merged cleanup)
   socket.on("disconnect", () => {
+    if (authedUser && activePlayers.get(authedUser.username) === socket.id) {
+      activePlayers.delete(authedUser.username);
+      savePlayerState(authedUser.username, pendingPlayer.inventory, pendingPlayer.hotbar);
+    }
     players.delete(id);
     socket.broadcast.emit("player_leave", { id });
-}); // <-- closes io.on("connection"
+  });
+}); // <-- closes io.on("connection")
+
 // --- Continuous orbit updates + combat ---
 setInterval(() => {
   const now = Date.now();
@@ -466,7 +445,7 @@ setInterval(() => {
   });
 }, 50); // update ~20 times per second
 
-// Health check
+// Health check endpoint
 app.get("/", (_req, res) => res.send("Florr backend OK"));
 
 const PORT = process.env.PORT || 8080;
