@@ -223,7 +223,26 @@ io.on("connection", (socket) => {
       );
 
       const data = await response.json();
+
 if (data.length === 0) {
+  socket.emit("auth_failed");
+  return; // don't disconnect yet, just fail
+}
+
+// ✅ Compare provided token with stored sessiontoken
+const storedToken = data[0].sessiontoken; // adjust if your column is named differently
+if (!token || storedToken !== token) {
+  socket.emit("auth_failed");
+  return; // don't disconnect yet
+}
+
+authedUser = { username: data[0].username };
+
+// Restore saved inventory/hotbar if present
+pendingPlayer.inventory = data[0].inventory || new Array(24).fill(null);
+pendingPlayer.hotbar = data[0].hotbar || [];
+
+socket.emit("auth_success", { username: authedUser.username });
   socket.emit("auth_failed");
   socket.disconnect();
   return;
