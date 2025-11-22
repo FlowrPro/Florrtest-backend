@@ -15,21 +15,33 @@ const io = new Server(httpServer, {
 const players = new Map(); // socketId -> player object
 const items = new Map();   // itemId -> item
 
+// Rarity multipliers
+const rarityMultipliers = {
+  common: 1,
+  unusual: 3,
+  rare: 9,
+  epic: 27,
+  legendary: 81,
+  mythic: 243,
+  ultra: 729
+};
+
 // Helpers
-function spawnItem(x, y, color = "cyan") {
+function spawnItem(x, y, color = "cyan", rarity = "common") {
   const id = `item_${Math.random().toString(36).slice(2, 9)}`;
   const radius = 8;
   const name = "Petal";
+  const mult = rarityMultipliers[rarity] || 1;
+
   items.set(id, { 
     id, x, y, radius, color, name,
-    damage: 5, 
-    health: 15, 
-    maxHealth: 15,
-    description: "Dropped petal with weaker stats.",
+    damage: 5 * mult,
+    health: 15 * mult,
+    maxHealth: 15 * mult,
+    description: `Dropped ${rarity} petal.`,
     reload: 2000,
     reloadUntil: 0,
-    // add rarity so frontend can reflect slot background
-    rarity: "common"
+    rarity
   });
   return id;
 }
@@ -105,20 +117,23 @@ io.on("connection", (socket) => {
   socket.on("set_username", ({ username }) => {
     pendingPlayer.username = username;
 
-    // Give starter petals now
+    // Give starter petals now (always common)
     const starterColors = Array(10).fill("white");
-    pendingPlayer.hotbar = starterColors.map(c => ({
-      name: "Petal",
-      color: c,
-      damage: 10,
-      health: 25,
-      maxHealth: 25,
-      description: "Basic starter petal.",
-      reload: 2000,
-      reloadUntil: 0,
-      // add rarity so frontend can style slot background
-      rarity: "common"
-    }));
+    pendingPlayer.hotbar = starterColors.map(c => {
+      const rarity = "common";
+      const mult = rarityMultipliers[rarity];
+      return {
+        name: "Petal",
+        color: c,
+        damage: 10 * mult,
+        health: 25 * mult,
+        maxHealth: 25 * mult,
+        description: "Basic starter petal.",
+        reload: 2000,
+        reloadUntil: 0,
+        rarity
+      };
+    });
 
     players.set(id, pendingPlayer);
 
@@ -188,7 +203,6 @@ io.on("connection", (socket) => {
           description: it.description,
           reload: it.reload,
           reloadUntil: it.reloadUntil,
-          // preserve rarity from item
           rarity: it.rarity
         };
         items.delete(itemId);
@@ -271,11 +285,12 @@ setInterval(() => {
           if (dist < other.radius + 8) {
             if (other.invincibleUntil && now < other.invincibleUntil) return;
 
+            // NOTE: still using 20; you can switch to item.damage later for scaling
             other.health -= 20;
             if (other.health <= 0) {
               other.health = 0;
               broadcastPlayerUpdate(other);
-               io.to(other.id).emit("player_dead");
+              io.to(other.id).emit("player_dead");
             } else {
               broadcastPlayerUpdate(other);
             }
