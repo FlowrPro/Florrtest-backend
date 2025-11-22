@@ -87,7 +87,11 @@ seedItems(world.width, world.height);
 // --- Socket.IO handlers ---
 io.on("connection", (socket) => {
   const id = socket.id;
-
+  // Chat messages
+socket.on("chat_message", ({ username, text }) => {
+  // Broadcast to everyone (including sender)
+  io.emit("chat_message", { username, text });
+});
   // Pending player (not yet spawned in world)
   const pendingPlayer = {
     id,
