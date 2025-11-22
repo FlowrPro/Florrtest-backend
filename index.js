@@ -87,11 +87,13 @@ seedItems(world.width, world.height);
 // --- Socket.IO handlers ---
 io.on("connection", (socket) => {
   const id = socket.id;
-  // Chat messages
-socket.on("chat_message", ({ username, text }) => {
-  // Broadcast to everyone (including sender)
-  io.emit("chat_message", { username, text });
-});
+  // Chat messages (server enforces username)
+  socket.on("chat_message", ({ text }) => {
+    const p = players.get(id);
+    const username = p?.username || "Anonymous";
+    io.emit("chat_message", { username, text });
+  });
+
   // Pending player (not yet spawned in world)
   const pendingPlayer = {
     id,
