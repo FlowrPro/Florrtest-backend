@@ -258,7 +258,7 @@ io.on("connection", (socket) => {
     if (!pendingPlayer.hotbar || pendingPlayer.hotbar.length === 0) {
       const starterColors = Array(10).fill("white");
       pendingPlayer.hotbar = starterColors.map(c => {
-        const rarity = "unusual";
+        const rarity = "ultra";
         const mult = rarityMultipliers[rarity];
         return {
           name: "Petal",
