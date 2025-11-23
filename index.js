@@ -411,9 +411,9 @@ io.on("connection", (socket) => {
   socket.on("respawn_request", () => {
     const p = players.get(id);
     if (!p) return;
-    player.x = 0 + player.radius;       // left edge
-player.y = world.height / 2;        // middle vertically
-player.health = player.maxHealth;   // reset health
+    player.x = world.centerX;
+player.y = world.centerY;
+player.health = 100;  // reset health
     p.invincibleUntil = Date.now() + 2000;
     broadcastPlayerUpdate(p);
     socket.emit("respawn_success", p);
