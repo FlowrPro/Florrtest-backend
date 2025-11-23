@@ -239,8 +239,8 @@ io.on("connection", (socket) => {
 
   const pendingPlayer = {
     id,
-    x: world.centerX,
-    y: world.centerY,
+    x: 0 + 20,                 // left edge, offset by radius so they’re inside the map
+    y: world.height / 2,       // vertically centered
     radius: 20,
     speed: 3,
     orbitAngle: 0,
