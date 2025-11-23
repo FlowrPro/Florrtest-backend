@@ -14,8 +14,8 @@ const io = new Server(httpServer, {
 });
 
 // --- Accounts (Supabase REST API, hashed passwords) ---
-const supabaseUrl = process.env.SUPABASE_URL;           
-const supabaseKey = process.env.SUPABASE_SECRET_KEY;    
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY;
 
 function hashPassword(password) {
   return crypto.createHash("sha256").update(password).digest("hex");
@@ -93,8 +93,8 @@ app.post("/login", async (req, res) => {
 });
 
 // --- World state (in-memory) ---
-const players = new Map(); 
-const items = new Map();   
+const players = new Map();
+const items = new Map();
 
 const rarityMultipliers = {
   common: 1,
@@ -112,7 +112,7 @@ function spawnItem(x, y, color = "cyan", rarity = "common") {
   const name = "Petal";
   const mult = rarityMultipliers[rarity] || 1;
 
-  items.set(id, { 
+  items.set(id, {
     id, x, y, radius, color, name,
     damage: 5 * mult,
     health: 15 * mult,
@@ -179,7 +179,69 @@ async function savePlayerState(username, inventory, hotbar) {
 // Track active players globally
 const activePlayers = new Map();
 
-// --- Socket.IO handlers ---
+/* ===========================
+   MOBS: storage, zones, spawn
+   =========================== */
+
+// Mob storage
+const mobs = new Map();
+
+// Rarity zones across world width
+const rarityZones = ["common", "unusual", "rare", "epic", "legendary", "mythic", "ultra"];
+const zoneWidth = world.width / rarityZones.length;
+const maxMobsPerZone = 15; // cap per zone → 15 * 7 = 105 total
+
+function broadcastMobs() {
+  io.emit("mobs_update", Array.from(mobs.values()));
+}
+
+// Count mobs in a specific zone index
+function countMobsInZone(zoneIndex) {
+  let count = 0;
+  for (const m of mobs.values()) {
+    const zi = Math.floor(m.x / zoneWidth);
+    if (zi === zoneIndex) count++;
+  }
+  return count;
+}
+
+// Spawn a mob at position; rarity derives from x-position zone
+function spawnMob(x, y) {
+  // Clamp x/y within world bounds
+  x = Math.max(0, Math.min(world.width, x));
+  y = Math.max(0, Math.min(world.height, y));
+
+  const zoneIndex = Math.max(0, Math.min(rarityZones.length - 1, Math.floor(x / zoneWidth)));
+  const rarity = rarityZones[zoneIndex];
+  const mult = rarityMultipliers[rarity];
+
+  const id = `mob_${Math.random().toString(36).slice(2, 9)}`;
+
+  const baseDamage = 25;   // common damage
+  const baseHealth = 100;  // common health
+  const baseSize = 40;     // ~double player radius (player ~20)
+
+  const radius = baseSize * Math.pow(2, zoneIndex); // size doubles each rarity upgrade
+
+  mobs.set(id, {
+    id,
+    x,
+    y,
+    radius,
+    damage: baseDamage * mult,
+    health: baseHealth * mult,
+    maxHealth: baseHealth * mult,
+    rarity,
+    color: "purple",
+    targetId: null // reserved for future aggro logic
+  });
+
+  return id;
+}
+
+/* ===========================
+   Socket.IO handlers
+   =========================== */
 io.on("connection", (socket) => {
   const id = socket.id;
   let authedUser = null;
@@ -258,7 +320,7 @@ io.on("connection", (socket) => {
     if (!pendingPlayer.hotbar || pendingPlayer.hotbar.length === 0) {
       const starterColors = Array(10).fill("white");
       pendingPlayer.hotbar = starterColors.map(c => {
-        const rarity = "ultra";
+        const rarity = "unusual";
         const mult = rarityMultipliers[rarity];
         return {
           name: "Petal",
@@ -284,10 +346,11 @@ io.on("connection", (socket) => {
       world,
       self: pendingPlayer,
       players: Array.from(players.values()).filter(p => p.id !== id),
-      items: Array.from(items.values())
+      items: Array.from(items.values()),
+      mobs: Array.from(mobs.values()) // include mobs in initial snapshot
     });
 
-        socket.broadcast.emit("player_join", {
+    socket.broadcast.emit("player_join", {
       id: pendingPlayer.id,
       x: pendingPlayer.x,
       y: pendingPlayer.y,
@@ -393,10 +456,11 @@ io.on("connection", (socket) => {
   });
 }); // <-- closes io.on("connection")
 
-// --- Continuous orbit updates + combat ---
+// --- Continuous orbit updates + combat + mob spawning/broadcast ---
 setInterval(() => {
   const now = Date.now();
 
+  // Petal orbit + player-vs-player combat
   players.forEach(p => {
     if (p.health <= 0) return;
     p.orbitAngle += p.orbitSpeed;
@@ -415,8 +479,8 @@ setInterval(() => {
           const petalX = p.x + (p.orbitDist || 56) * Math.cos(angle);
           const petalY = p.y + (p.orbitDist || 56) * Math.sin(angle);
 
-          const dist = distance(petalX, petalY, other.x, other.y);
-          if (dist < other.radius + 8) {
+          const distToOther = distance(petalX, petalY, other.x, other.y);
+          if (distToOther < other.radius + 8) {
             if (other.invincibleUntil && now < other.invincibleUntil) return;
 
             // Apply damage
@@ -443,6 +507,20 @@ setInterval(() => {
 
     broadcastPlayerUpdate(p);
   });
+
+  // Mob spawning with per-zone caps
+  for (let zoneIndex = 0; zoneIndex < rarityZones.length; zoneIndex++) {
+    const currentCount = countMobsInZone(zoneIndex);
+    if (currentCount < maxMobsPerZone) {
+      // Spawn at random position inside this zone
+      const x = zoneIndex * zoneWidth + Math.random() * zoneWidth;
+      const y = Math.random() * world.height;
+      spawnMob(x, y);
+    }
+  }
+
+  // Broadcast mobs each tick (simple for now; later we can optimize)
+  broadcastMobs();
 }, 50); // update ~20 times per second
 
 // Health check endpoint
