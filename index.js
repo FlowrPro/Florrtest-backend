@@ -201,19 +201,32 @@ function countMobsInZone(zoneIndex) {
 function spawnMob(x, y) {
   x = Math.max(0, Math.min(world.width, x));
   y = Math.max(0, Math.min(world.height, y));
+
   const zoneIndex = Math.max(0, Math.min(rarityZones.length - 1, Math.floor(x / zoneWidth)));
   const rarity = rarityZones[zoneIndex];
   const mult = rarityMultipliers[rarity];
   const id = `mob_${Math.random().toString(36).slice(2, 9)}`;
-  const baseDamage = 25, baseHealth = 100, baseSize = 40;
+
+  const baseDamage = 25;
+  const baseHealth = 100;
+  const baseSize = 40;
+
+  // ✅ declare radius here
+  const radius = baseSize * (1 + 0.5 * zoneIndex);
+
   mobs.set(id, {
-    id, x, y,
-    const radius = baseSize * (1 + 0.5 * zoneIndex);
+    id,
+    x,
+    y,
+    radius, // just reference it here
     damage: baseDamage * mult,
     health: baseHealth * mult,
     maxHealth: baseHealth * mult,
-    rarity, color: "purple", targetId: null
+    rarity,
+    color: "purple",
+    targetId: null
   });
+
   return id;
 }
 
@@ -484,12 +497,12 @@ setInterval(() => {
       const d = distance(m.x, m.y, p.x, p.y);
       if (d < nearestDist) { nearest = p; nearestDist = d; }
     });
-    if (nearest && nearestDist < 300) {
+    if (nearest && nearestDist < 600) {
       m.targetId = nearest.id;
       const dx = nearest.x - m.x, dy = nearest.y - m.y;
       const dist = Math.hypot(dx, dy);
       if (dist > 0) {
-        const speed = 1.5;
+        const speed = 3;
         m.x += (dx / dist) * speed;
         m.y += (dy / dist) * speed;
       }
