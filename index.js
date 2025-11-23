@@ -208,7 +208,7 @@ function spawnMob(x, y) {
   const baseDamage = 25, baseHealth = 100, baseSize = 40;
   mobs.set(id, {
     id, x, y,
-    radius: baseSize * Math.pow(2, zoneIndex),
+    const radius = baseSize * (1 + 0.5 * zoneIndex);
     damage: baseDamage * mult,
     health: baseHealth * mult,
     maxHealth: baseHealth * mult,
