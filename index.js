@@ -182,20 +182,14 @@ const activePlayers = new Map();
 /* ===========================
    MOBS: storage, zones, spawn
    =========================== */
-
-// Mob storage
 const mobs = new Map();
-
-// Rarity zones across world width
 const rarityZones = ["common", "unusual", "rare", "epic", "legendary", "mythic", "ultra"];
 const zoneWidth = world.width / rarityZones.length;
-const maxMobsPerZone = 15; // cap per zone → 15 * 7 = 105 total
+const maxMobsPerZone = 15;
 
 function broadcastMobs() {
   io.emit("mobs_update", Array.from(mobs.values()));
 }
-
-// Count mobs in a specific zone index
 function countMobsInZone(zoneIndex) {
   let count = 0;
   for (const m of mobs.values()) {
@@ -204,38 +198,22 @@ function countMobsInZone(zoneIndex) {
   }
   return count;
 }
-
-// Spawn a mob at position; rarity derives from x-position zone
 function spawnMob(x, y) {
-  // Clamp x/y within world bounds
   x = Math.max(0, Math.min(world.width, x));
   y = Math.max(0, Math.min(world.height, y));
-
   const zoneIndex = Math.max(0, Math.min(rarityZones.length - 1, Math.floor(x / zoneWidth)));
   const rarity = rarityZones[zoneIndex];
   const mult = rarityMultipliers[rarity];
-
   const id = `mob_${Math.random().toString(36).slice(2, 9)}`;
-
-  const baseDamage = 25;   // common damage
-  const baseHealth = 100;  // common health
-  const baseSize = 40;     // ~double player radius (player ~20)
-
-  const radius = baseSize * Math.pow(2, zoneIndex); // size doubles each rarity upgrade
-
+  const baseDamage = 25, baseHealth = 100, baseSize = 40;
   mobs.set(id, {
-    id,
-    x,
-    y,
-    radius,
+    id, x, y,
+    radius: baseSize * Math.pow(2, zoneIndex),
     damage: baseDamage * mult,
     health: baseHealth * mult,
     maxHealth: baseHealth * mult,
-    rarity,
-    color: "purple",
-    targetId: null // reserved for future aggro logic
+    rarity, color: "purple", targetId: null
   });
-
   return id;
 }
 
@@ -270,34 +248,21 @@ io.on("connection", (socket) => {
         { headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` } }
       );
       const data = await response.json();
-
-      if (data.length === 0) {
-        socket.emit("auth_failed");
-        return;
-      }
-
+      if (data.length === 0) return socket.emit("auth_failed");
       const storedToken = data[0].sessiontoken;
-      if (!token || storedToken !== token) {
-        socket.emit("auth_failed");
-        return;
-      }
-
+      if (!token || storedToken !== token) return socket.emit("auth_failed");
       if (activePlayers.has(username)) {
         socket.emit("auth_failed", { reason: "already_logged_in" });
-        socket.disconnect();
-        return;
+        return socket.disconnect();
       }
-
       activePlayers.set(username, socket.id);
       authedUser = { username: data[0].username };
-
       pendingPlayer.inventory = data[0].inventory || new Array(24).fill(null);
       pendingPlayer.hotbar = data[0].hotbar || [];
-
       socket.emit("auth_success", { username: authedUser.username });
     } catch (err) {
       console.error("Auth error:", err);
-      socket.emit("auth_failed");
+            socket.emit("auth_failed");
     }
   });
 
@@ -314,7 +279,6 @@ io.on("connection", (socket) => {
       socket.emit("error", { message: "Not authenticated" });
       return;
     }
-
     pendingPlayer.username = username;
 
     if (!pendingPlayer.hotbar || pendingPlayer.hotbar.length === 0) {
@@ -347,7 +311,7 @@ io.on("connection", (socket) => {
       self: pendingPlayer,
       players: Array.from(players.values()).filter(p => p.id !== id),
       items: Array.from(items.values()),
-      mobs: Array.from(mobs.values()) // include mobs in initial snapshot
+      mobs: Array.from(mobs.values())
     });
 
     socket.broadcast.emit("player_join", {
@@ -366,9 +330,7 @@ io.on("connection", (socket) => {
   // Movement
   socket.on("move", ({ dx, dy }) => {
     const p = players.get(id);
-    if (!p) return;
-    if (p.health <= 0) return;
-
+    if (!p || p.health <= 0) return;
     p.x += dx * p.speed;
     p.y += dy * p.speed;
     p.x = Math.max(p.radius, Math.min(world.width - p.radius, p.x));
@@ -389,7 +351,6 @@ io.on("connection", (socket) => {
     const p = players.get(id);
     const it = items.get(itemId);
     if (!p || !it) return;
-
     const d = distance(p.x, p.y, it.x, it.y);
     if (d < p.radius + it.radius) {
       const emptyIdx = p.inventory.findIndex(s => s === null);
@@ -445,7 +406,7 @@ io.on("connection", (socket) => {
     socket.emit("respawn_success", p);
   });
 
-  // Disconnect (merged cleanup)
+  // Disconnect
   socket.on("disconnect", () => {
     if (authedUser && activePlayers.get(authedUser.username) === socket.id) {
       activePlayers.delete(authedUser.username);
@@ -454,36 +415,32 @@ io.on("connection", (socket) => {
     players.delete(id);
     socket.broadcast.emit("player_leave", { id });
   });
-}); // <-- closes io.on("connection")
+}); // closes io.on("connection")
 
-// --- Continuous orbit updates + combat + mob spawning/broadcast ---
+// --- Continuous updates: orbit combat + mob AI ---
 setInterval(() => {
   const now = Date.now();
 
-  // Petal orbit + player-vs-player combat
+  // Player orbit combat (vs players and mobs)
   players.forEach(p => {
     if (p.health <= 0) return;
     p.orbitAngle += p.orbitSpeed;
 
-    players.forEach(other => {
-      if (other.id === p.id) return;
-      if (other.health <= 0) return;
+    const equipped = p.hotbar.filter(i => i);
+    if (equipped.length > 0) {
+      const angleStep = (2 * Math.PI) / equipped.length;
+      equipped.forEach((item, idx) => {
+        if (item.reloadUntil && now < item.reloadUntil) return;
+        const angle = p.orbitAngle + idx * angleStep;
+        const petalX = p.x + (p.orbitDist || 56) * Math.cos(angle);
+        const petalY = p.y + (p.orbitDist || 56) * Math.sin(angle);
 
-      const equipped = p.hotbar.filter(i => i);
-      if (equipped.length > 0) {
-        const angleStep = (2 * Math.PI) / equipped.length;
-        equipped.forEach((item, idx) => {
-          if (item.reloadUntil && now < item.reloadUntil) return;
-
-          const angle = p.orbitAngle + idx * angleStep;
-          const petalX = p.x + (p.orbitDist || 56) * Math.cos(angle);
-          const petalY = p.y + (p.orbitDist || 56) * Math.sin(angle);
-
+        // Damage other players
+        players.forEach(other => {
+          if (other.id === p.id || other.health <= 0) return;
           const distToOther = distance(petalX, petalY, other.x, other.y);
           if (distToOther < other.radius + 8) {
             if (other.invincibleUntil && now < other.invincibleUntil) return;
-
-            // Apply damage
             other.health -= item.damage;
             if (other.health <= 0) {
               other.health = 0;
@@ -492,36 +449,79 @@ setInterval(() => {
             } else {
               broadcastPlayerUpdate(other);
             }
-
-            // Petal durability check
-            if (item.damage >= item.health) {
+            item.health -= item.damage;
+            if (item.health <= 0) {
               item.reloadUntil = now + item.reload;
-              item.health = item.maxHealth; // reset after reload
-            } else {
-              item.health -= item.damage;
+              item.health = item.maxHealth;
             }
           }
         });
-      }
-    });
 
+        // Damage mobs
+        mobs.forEach(m => {
+          if (m.health <= 0) return;
+          const distToMob = distance(petalX, petalY, m.x, m.y);
+          if (distToMob < m.radius + 8) {
+            m.health -= item.damage;
+            if (m.health <= 0) {
+              m.health = 0;
+              mobs.delete(m.id);
+              io.emit("mob_dead", { id: m.id });
+            }
+          }
+        });
+      });
+    }
     broadcastPlayerUpdate(p);
+  });
+
+  // Mob AI movement + damage
+  mobs.forEach(m => {
+    if (m.health <= 0) return;
+    let nearest = null, nearestDist = Infinity;
+    players.forEach(p => {
+      if (p.health <= 0) return;
+      const d = distance(m.x, m.y, p.x, p.y);
+      if (d < nearestDist) { nearest = p; nearestDist = d; }
+    });
+    if (nearest && nearestDist < 300) {
+      m.targetId = nearest.id;
+      const dx = nearest.x - m.x, dy = nearest.y - m.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 0) {
+        const speed = 1.5;
+        m.x += (dx / dist) * speed;
+        m.y += (dy / dist) * speed;
+      }
+      if (dist < m.radius + nearest.radius) {
+        if (!(nearest.invincibleUntil && now < nearest.invincibleUntil)) {
+          nearest.health -= m.damage;
+          if (nearest.health <= 0) {
+            nearest.health = 0;
+            broadcastPlayerUpdate(nearest);
+            io.to(nearest.id).emit("player_dead");
+          } else {
+            broadcastPlayerUpdate(nearest);
+          }
+        }
+      }
+    } else {
+      m.targetId = null;
+    }
   });
 
   // Mob spawning with per-zone caps
   for (let zoneIndex = 0; zoneIndex < rarityZones.length; zoneIndex++) {
-    const currentCount = countMobsInZone(zoneIndex);
-    if (currentCount < maxMobsPerZone) {
-      // Spawn at random position inside this zone
+    if (countMobsInZone(zoneIndex) < maxMobsPerZone) {
       const x = zoneIndex * zoneWidth + Math.random() * zoneWidth;
       const y = Math.random() * world.height;
       spawnMob(x, y);
     }
   }
 
-  // Broadcast mobs each tick (simple for now; later we can optimize)
+  // Broadcast mobs each tick
   broadcastMobs();
-}, 50); // update ~20 times per second
+}, 50);
 
 // Health check endpoint
 app.get("/", (_req, res) => res.send("Florr backend OK"));
