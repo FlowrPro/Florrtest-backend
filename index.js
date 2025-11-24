@@ -3,11 +3,6 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import crypto from "crypto"; // built-in, no install needed
-
-export const Petals = {
-  Bone: BonePetal,
-  Petal: BasicPetal
-};
 // --- Server setup ---
 const app = express();
 app.use(cors());
