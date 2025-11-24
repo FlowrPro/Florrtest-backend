@@ -601,7 +601,7 @@ setInterval(() => {
                   id: itemId,
                   x: m.x,
                   y: m.y,
-                  radius: 8,
+                  radius: 16,
                   ...bone
                 };
 
