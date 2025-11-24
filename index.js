@@ -471,18 +471,26 @@ setInterval(() => {
         });
 
         // Damage mobs
-        mobs.forEach(m => {
-          if (m.health <= 0) return;
-          const distToMob = distance(petalX, petalY, m.x, m.y);
-          if (distToMob < m.radius + 8) {
-            m.health -= item.damage;
-            if (m.health <= 0) {
-              m.health = 0;
-              mobs.delete(m.id);
-              io.emit("mob_dead", { id: m.id });
-            }
-          }
-        });
+mobs.forEach(m => {
+  if (m.health <= 0) return;
+  const distToMob = distance(petalX, petalY, m.x, m.y);
+  if (distToMob < m.radius + 8) {
+    m.health -= item.damage;
+
+    // Petal also takes damage when hitting a mob
+    item.health -= m.damage;
+    if (item.health <= 0) {
+      item.reloadUntil = now + item.reload;
+      item.health = item.maxHealth;
+    }
+
+    if (m.health <= 0) {
+      m.health = 0;
+      mobs.delete(m.id);
+      io.emit("mob_dead", { id: m.id });
+    }
+  }
+});
       });
     }
     broadcastPlayerUpdate(p);
