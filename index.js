@@ -536,32 +536,89 @@ setInterval(() => {
     p.orbitAngle += p.orbitSpeed;
 
     const equipped = p.hotbar.filter(i => i);
-    if (equipped.length > 0) {
-      const angleStep = (2 * Math.PI) / equipped.length;
-      equipped.forEach((item, idx) => {
-        if (item.reloadUntil && now < item.reloadUntil) return;
-        const angle = p.orbitAngle + idx * angleStep;
-        const petalX = p.x + (p.orbitDist || 56) * Math.cos(angle);
-        const petalY = p.y + (p.orbitDist || 56) * Math.sin(angle);
+if (equipped.length > 0) {
+  const angleStep = (2 * Math.PI) / equipped.length;
+  equipped.forEach((item, idx) => {
+    if (item.reloadUntil && now < item.reloadUntil) return;
+    const angle = p.orbitAngle + idx * angleStep;
+    const petalX = p.x + (p.orbitDist || 56) * Math.cos(angle);
+    const petalY = p.y + (p.orbitDist || 56) * Math.sin(angle);
 
-        // Admin scaling
-        const dmg = p.isAdmin ? item.damage * 2 : item.damage;
-        const hpLoss = p.isAdmin ? item.damage * 2 : item.damage;
+    // Admin scaling
+    const dmg = p.isAdmin ? item.damage * 2 : item.damage;
+    const hpLoss = p.isAdmin ? item.damage * 2 : item.damage;
 
-        // Damage other players
-        players.forEach(other => {
-          if (other.id === p.id || other.health <= 0) return;
-          const distToOther = distance(petalX, petalY, other.x, other.y);
-          if (distToOther < other.radius + 8) {
-            if (other.invincibleUntil && now < other.invincibleUntil) return;
-            other.health -= dmg;
-            if (other.health <= 0) {
-              other.health = 0;
-              broadcastPlayerUpdate(other);
-              io.to(other.id).emit("player_dead");
-            } else {
-              broadcastPlayerUpdate(other);
-            }
+    // Damage other players
+    players.forEach(other => {
+      if (other.id === p.id || other.health <= 0) return;
+      const distToOther = distance(petalX, petalY, other.x, other.y);
+      if (distToOther < other.radius + (item.radius || 8)) {   // ✅ use item.radius
+        if (other.invincibleUntil && now < other.invincibleUntil) return;
+        other.health -= dmg;
+        if (other.health <= 0) {
+          other.health = 0;
+          broadcastPlayerUpdate(other);
+          io.to(other.id).emit("player_dead");
+        } else {
+          broadcastPlayerUpdate(other);
+        }
+        item.health -= hpLoss;
+        if (item.health <= 0) {
+          item.reloadUntil = now + item.reload;
+          item.health = item.maxHealth;
+        }
+      }
+    });
+
+    // Damage mobs
+    mobs.forEach(m => {
+      if (m.health <= 0) return;
+      const distToMob = distance(petalX, petalY, m.x, m.y);
+      if (distToMob < m.radius + (item.radius || 8)) {         // ✅ use item.radius
+        m.health -= dmg;
+
+        // Track who damaged this mob
+        if (!m.damageDealers) m.damageDealers = new Set();
+        m.damageDealers.add(p.id);
+
+        // Petal takes damage
+        item.health -= p.isAdmin ? m.damage * 2 : m.damage;
+        if (item.health <= 0) {
+          item.reloadUntil = now + item.reload;
+          item.health = item.maxHealth;
+        }
+
+        if (m.health <= 0) {
+          m.health = 0;
+          mobs.delete(m.id);
+          io.emit("mob_dead", { id: m.id });
+
+          // Drop a Bone Petal when a beetle mob dies
+          if (m.type === "beetle") {
+            const bone = createBonePetal(m.rarity);
+            const itemId = `item_${Math.random().toString(36).slice(2, 9)}`;
+            const drop = {
+              id: itemId,
+              x: m.x,
+              y: m.y,
+              radius: 16,   // bigger than basic petal
+              ...bone
+            };
+
+            items.set(itemId, drop);
+
+            m.damageDealers.forEach(playerId => {
+              const dmgPlayer = players.get(playerId);
+              if (dmgPlayer && dmgPlayer.socket) {
+                dmgPlayer.socket.emit("item_spawn", drop);
+              }
+            });
+          }
+        }
+      }
+    });
+  });
+}
             item.health -= hpLoss;
             if (item.health <= 0) {
               item.reloadUntil = now + item.reload;
