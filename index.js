@@ -527,7 +527,7 @@ setInterval(() => {
   players.forEach(p => {
     if (p.health <= 0) return;
 
-    // ✅ Bone bonus: +50% max health per Bone equipped
+    // Bone bonus
     const boneCount = p.hotbar.filter(i => i && i.name === "Bone").length;
     const baseMaxHealth = 100;
     p.maxHealth = baseMaxHealth + baseMaxHealth * 0.5 * boneCount;
@@ -544,7 +544,7 @@ setInterval(() => {
         const petalX = p.x + (p.orbitDist || 56) * Math.cos(angle);
         const petalY = p.y + (p.orbitDist || 56) * Math.sin(angle);
 
-        // ✅ Admin scaling
+        // Admin scaling
         const dmg = p.isAdmin ? item.damage * 2 : item.damage;
         const hpLoss = p.isAdmin ? item.damage * 2 : item.damage;
 
@@ -577,11 +577,11 @@ setInterval(() => {
           if (distToMob < m.radius + 8) {
             m.health -= dmg;
 
-            // ✅ Track who damaged this mob
+            // Track who damaged this mob
             if (!m.damageDealers) m.damageDealers = new Set();
             m.damageDealers.add(p.id);
 
-            // ✅ Petal also takes damage when hitting a mob
+            // Petal takes damage
             item.health -= p.isAdmin ? m.damage * 2 : m.damage;
             if (item.health <= 0) {
               item.reloadUntil = now + item.reload;
@@ -593,7 +593,7 @@ setInterval(() => {
               mobs.delete(m.id);
               io.emit("mob_dead", { id: m.id });
 
-              // ✅ Drop a Bone Petal when a beetle mob dies
+              // Drop a Bone Petal when a beetle mob dies
               if (m.type === "beetle") {
                 const bone = createBonePetal(m.rarity);
                 const itemId = `item_${Math.random().toString(36).slice(2, 9)}`;
@@ -605,7 +605,7 @@ setInterval(() => {
                   ...bone
                 };
 
-                // ✅ Only send drop to players who damaged this mob
+                // Only send drop to players who damaged this mob
                 m.damageDealers.forEach(playerId => {
                   const dmgPlayer = players.get(playerId);
                   if (dmgPlayer && dmgPlayer.socket) {
@@ -620,7 +620,6 @@ setInterval(() => {
     }
     broadcastPlayerUpdate(p);
   });
-});
 
   // Mob AI movement + damage
   mobs.forEach(m => {
@@ -657,17 +656,17 @@ setInterval(() => {
     }
   });
 
-// Mob spawning with per-zone caps
-for (let zoneIndex = 0; zoneIndex < rarityZones.length; zoneIndex++) {
-  if (countMobsInZone(zoneIndex) < maxMobsPerZone) {
-    const x = zoneIndex * zoneWidth + Math.random() * zoneWidth;
-    const y = Math.random() * world.height;
-    spawnMob(x, y);
+  // Mob spawning with per-zone caps
+  for (let zoneIndex = 0; zoneIndex < rarityZones.length; zoneIndex++) {
+    if (countMobsInZone(zoneIndex) < maxMobsPerZone) {
+      const x = zoneIndex * zoneWidth + Math.random() * zoneWidth;
+      const y = Math.random() * world.height;
+      spawnMob(x, y);
+    }
   }
-}
 
-// Broadcast mobs each tick
-broadcastMobs();
+  // Broadcast mobs each tick
+  broadcastMobs();
 }, 50);
 
 // Health check endpoint
