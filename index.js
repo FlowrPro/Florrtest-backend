@@ -657,17 +657,17 @@ setInterval(() => {
     }
   });
 
-  // Mob spawning with per-zone caps
-  for (let zoneIndex = 0; zoneIndex < rarityZones.length; zoneIndex++) {
-    if (countMobsInZone(zoneIndex) < maxMobsPerZone) {
-      const x = zoneIndex * zoneWidth + Math.random() * zoneWidth;
-      const y = Math.random() * world.height;
-      spawnMob(x, y);
-    }
+// Mob spawning with per-zone caps
+for (let zoneIndex = 0; zoneIndex < rarityZones.length; zoneIndex++) {
+  if (countMobsInZone(zoneIndex) < maxMobsPerZone) {
+    const x = zoneIndex * zoneWidth + Math.random() * zoneWidth;
+    const y = Math.random() * world.height;
+    spawnMob(x, y);
   }
+}
 
-  // Broadcast mobs each tick
-  broadcastMobs();
+// Broadcast mobs each tick
+broadcastMobs();
 }, 50);
 
 // Health check endpoint
