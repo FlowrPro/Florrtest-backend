@@ -3,8 +3,6 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import crypto from "crypto"; // built-in, no install needed
-import { BonePetal } from "./bone.js";
-import { BasicPetal } from "./basic.js";
 
 export const Petals = {
   Bone: BonePetal,
