@@ -589,43 +589,41 @@ setInterval(() => {
             }
 
             if (m.health <= 0) {
-  m.health = 0;
-  mobs.delete(m.id);
-  io.emit("mob_dead", { id: m.id });
+              m.health = 0;
+              mobs.delete(m.id);
+              io.emit("mob_dead", { id: m.id });
 
-  // Drop a Bone Petal when a beetle mob dies
-  if (m.type === "beetle") {
-    const bone = createBonePetal(m.rarity);
-    const itemId = `item_${Math.random().toString(36).slice(2, 9)}`;
-    const drop = {
-      id: itemId,
-      x: m.x,
-      y: m.y,
-      radius: 16,   // bigger than basic petal
-      ...bone
-    };
+              // Drop a Bone Petal when a beetle mob dies
+              if (m.type === "beetle") {
+                const bone = createBonePetal(m.rarity);
+                const itemId = `item_${Math.random().toString(36).slice(2, 9)}`;
+                const drop = {
+                  id: itemId,
+                  x: m.x,
+                  y: m.y,
+                  radius: 16,   // bigger than basic petal
+                  ...bone
+                };
 
-    // ✅ Add to server items map so it persists
-    items.set(itemId, drop);
+                // ✅ Add to server items map so it persists
+                items.set(itemId, drop);
 
-    // ✅ Only send drop to players who damaged this mob
-    m.damageDealers.forEach(playerId => {
-      const dmgPlayer = players.get(playerId);
-      if (dmgPlayer && dmgPlayer.socket) {
-        dmgPlayer.socket.emit("item_spawn", drop);
-      }
-    });
-  }
-}
+                // ✅ Only send drop to players who damaged this mob
+                m.damageDealers.forEach(playerId => {
+                  const dmgPlayer = players.get(playerId);
+                  if (dmgPlayer && dmgPlayer.socket) {
+                    dmgPlayer.socket.emit("item_spawn", drop);
+                  }
                 });
               }
             }
           }
-        });
-      });
-    }
+        }); // <-- closes mobs.forEach
+      });   // <-- closes equipped.forEach
+    }       // <-- closes if (equipped.length > 0)
     broadcastPlayerUpdate(p);
-  });
+  });       // <-- closes players.forEach
+}, 50);     // <-- closes setInterval
 
   // Mob AI movement + damage
   mobs.forEach(m => {
