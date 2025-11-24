@@ -398,14 +398,22 @@ io.on("connection", (socket) => {
     if (!p || !it) return;
     const d = distance(p.x, p.y, it.x, it.y);
     if (d < p.radius + it.radius) {
-      const emptyIdx = p.inventory.findIndex(s => s === null);
-      if (emptyIdx !== -1) {
-        p.inventory[emptyIdx] = { ...it };
-        items.delete(itemId);
-        socket.emit("inventory_update", p.inventory);
-        broadcastItems();
-        savePlayerState(p.username, p.inventory, p.hotbar);
-      }
+      const existing = p.inventory.find(slot =>
+  slot && slot.item.name === it.name && slot.item.rarity === it.rarity
+);
+
+if (existing) {
+  existing.count += 1;
+} else {
+  const emptyIdx = p.inventory.findIndex(s => s === null);
+  if (emptyIdx !== -1) {
+    p.inventory[emptyIdx] = { item: { ...it }, count: 1 };
+  }
+}
+items.delete(itemId);
+socket.emit("inventory_update", p.inventory);
+broadcastItems();
+savePlayerState(p.username, p.inventory, p.hotbar);
     }
   });
 
@@ -413,10 +421,16 @@ io.on("connection", (socket) => {
   socket.on("equip_request", ({ invIndex, hotbarIndex }) => {
     const p = players.get(id);
     if (!p) return;
-    const item = p.inventory[invIndex];
-    if (!item) return;
-    p.hotbar[hotbarIndex] = item;
-    p.inventory[invIndex] = null;
+    const slot = p.inventory[invIndex];
+if (!slot) return;
+
+if (slot.count > 1) {
+  slot.count -= 1;
+  p.hotbar[hotbarIndex] = { ...slot.item };
+} else {
+  p.hotbar[hotbarIndex] = slot.item;
+  p.inventory[invIndex] = null;
+}
     socket.emit("inventory_update", p.inventory);
     socket.emit("hotbar_update", p.hotbar);
     broadcastPlayerUpdate(p);
