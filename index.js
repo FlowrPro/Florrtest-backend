@@ -236,7 +236,7 @@ function spawnMob(x, y) {
   const baseHealth = 100;
   const baseSize = 40;
 
-  const radius = baseSize * (1 + 0.5 * zoneIndex);
+  const radius = baseSize * (1 + 1.0 * zoneIndex);
 
   mobs.set(id, {
     id,
