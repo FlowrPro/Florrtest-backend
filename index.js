@@ -541,7 +541,7 @@ setInterval(() => {
       equipped.forEach((item, idx) => {
         if (item.reloadUntil && now < item.reloadUntil) return;
         const angle = p.orbitAngle + idx * angleStep;
-                const petalX = p.x + (p.orbitDist || 56) * Math.cos(angle);
+        const petalX = p.x + (p.orbitDist || 56) * Math.cos(angle);
         const petalY = p.y + (p.orbitDist || 56) * Math.sin(angle);
 
         // ✅ Admin scaling
@@ -577,6 +577,10 @@ setInterval(() => {
           if (distToMob < m.radius + 8) {
             m.health -= dmg;
 
+            // ✅ Track who damaged this mob
+            if (!m.damageDealers) m.damageDealers = new Set();
+            m.damageDealers.add(p.id);
+
             // ✅ Petal also takes damage when hitting a mob
             item.health -= p.isAdmin ? m.damage * 2 : m.damage;
             if (item.health <= 0) {
@@ -593,14 +597,21 @@ setInterval(() => {
               if (m.type === "beetle") {
                 const bone = createBonePetal(m.rarity);
                 const itemId = `item_${Math.random().toString(36).slice(2, 9)}`;
-                items.set(itemId, {
+                const drop = {
                   id: itemId,
                   x: m.x,
                   y: m.y,
                   radius: 8,
                   ...bone
+                };
+
+                // ✅ Only send drop to players who damaged this mob
+                m.damageDealers.forEach(playerId => {
+                  const dmgPlayer = players.get(playerId);
+                  if (dmgPlayer && dmgPlayer.socket) {
+                    dmgPlayer.socket.emit("item_spawn", drop);
+                  }
                 });
-                broadcastItems();
               }
             }
           }
@@ -609,6 +620,7 @@ setInterval(() => {
     }
     broadcastPlayerUpdate(p);
   });
+});
 
   // Mob AI movement + damage
   mobs.forEach(m => {
