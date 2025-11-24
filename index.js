@@ -312,12 +312,17 @@ io.on("connection", (socket) => {
     }
   });
 
-  // --- Chat ---
-  socket.on("chat_message", ({ text }) => {
-    const p = players.get(id);
-    const username = p?.username || "Anonymous";
-    io.emit("chat_message", { username, text });
+ // --- Chat ---
+socket.on("chat_message", ({ text }) => {
+  const p = players.get(id);
+  const username = p?.username || "Anonymous";
+
+  io.emit("chat_message", {
+    username,
+    text,
+    isAdmin: p?.isAdmin || false   // ✅ flag admin so frontend can style
   });
+});
 
   // --- Set username ---
   socket.on("set_username", ({ username }) => {
