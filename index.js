@@ -211,7 +211,7 @@ function spawnMob(x, y) {
   const baseHealth = 100;
   const baseSize = 40;
 
-  // ✅ declare radius here
+  //declare radius here
   const radius = baseSize * (1 + 0.5 * zoneIndex);
 
   mobs.set(id, {
@@ -229,30 +229,37 @@ function spawnMob(x, y) {
 
   return id;
 }
+function createPendingPlayer(id, username = null) {
+  const spawnX = 20;                  // left edge, offset by radius
+  const spawnY = world.height / 2;    // vertically centered
 
-/* ===========================
-   Socket.IO handlers
-   =========================== */
-io.on("connection", (socket) => {
-  const id = socket.id;
-  let authedUser = null;
-
-  const pendingPlayer = {
+  return {
     id,
-    x: 0 + 20,                 // left edge, offset by radius so they’re inside the map
-    y: world.height / 2,       // vertically centered
+    x: spawnX,
+    y: spawnY,
     radius: 20,
     speed: 3,
     orbitAngle: 0,
     orbitSpeed: 0.08,
     hotbar: [],
     inventory: new Array(24).fill(null),
-    username: null,
+    username,
     orbitDist: 56,
     health: 100,
-    invincibleUntil: 0
-  };
+    invincibleUntil: 0,
 
+    //  store original spawn point for reuse
+    spawnX,
+    spawnY
+  };
+}
+/* ===========================
+   Socket.IO handlers
+   =========================== */
+io.on("connection", (socket) => {
+  const id = socket.id;
+  let authedUser = null;
+  const pendingPlayer = createPendingPlayer(id);
   // --- Authentication ---
   socket.on("auth", async ({ token, username }) => {
     try {
@@ -411,9 +418,9 @@ io.on("connection", (socket) => {
   socket.on("respawn_request", () => {
   const p = players.get(id);
   if (!p) return;
-  p.x = world.centerX;
-  p.y = world.centerY;
-  p.health = 100;  // reset health
+  p.x = p.spawnX;
+  p.y = p.spawnY;
+  p.health = 100;
   p.invincibleUntil = Date.now() + 2000;
   broadcastPlayerUpdate(p);
   socket.emit("respawn_success", p);
