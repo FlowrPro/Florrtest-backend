@@ -601,14 +601,12 @@ setInterval(() => {
                   id: itemId,
                   x: m.x,
                   y: m.y,
-                  radius: 16,   // bigger than basic petal
+                  radius: 16,
                   ...bone
                 };
 
-                // ✅ Add to server items map so it persists
                 items.set(itemId, drop);
 
-                // ✅ Only send drop to players who damaged this mob
                 m.damageDealers.forEach(playerId => {
                   const dmgPlayer = players.get(playerId);
                   if (dmgPlayer && dmgPlayer.socket) {
@@ -618,12 +616,11 @@ setInterval(() => {
               }
             }
           }
-        }); // <-- closes mobs.forEach
-      });   // <-- closes equipped.forEach
-    }       // <-- closes if (equipped.length > 0)
+        });
+      });
+    }
     broadcastPlayerUpdate(p);
-  });       // <-- closes players.forEach
-}, 50);     // <-- closes setInterval
+  });
 
   // Mob AI movement + damage
   mobs.forEach(m => {
