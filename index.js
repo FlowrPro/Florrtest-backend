@@ -439,19 +439,31 @@ if (slot.count > 1) {
 
   // Unequip
   socket.on("unequip_request", ({ hotbarIndex }) => {
-    const p = players.get(id);
-    if (!p) return;
-    const item = p.hotbar[hotbarIndex];
-    if (!item) return;
+  const p = players.get(id);
+  if (!p) return;
+  const item = p.hotbar[hotbarIndex];
+  if (!item) return;
+
+  // Try to stack into existing slot
+  const existing = p.inventory.find(slot =>
+    slot && slot.item.name === item.name && slot.item.rarity === item.rarity
+  );
+
+  if (existing) {
+    existing.count += 1;
+  } else {
     const emptyIdx = p.inventory.findIndex(s => s === null);
     if (emptyIdx === -1) return;
-    p.inventory[emptyIdx] = item;
-    p.hotbar[hotbarIndex] = null;
-    socket.emit("inventory_update", p.inventory);
-    socket.emit("hotbar_update", p.hotbar);
-    broadcastPlayerUpdate(p);
-    savePlayerState(p.username, p.inventory, p.hotbar);
-  });
+    p.inventory[emptyIdx] = { item: { ...item }, count: 1 };
+  }
+
+  p.hotbar[hotbarIndex] = null;
+
+  socket.emit("inventory_update", p.inventory);
+  socket.emit("hotbar_update", p.hotbar);
+  broadcastPlayerUpdate(p);
+  savePlayerState(p.username, p.inventory, p.hotbar);
+});
 
   // Respawn
   socket.on("respawn_request", () => {
