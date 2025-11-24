@@ -10,7 +10,10 @@ app.use(cors());
 app.use(express.json()); // allow JSON body parsing
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  cors: { origin: "https://flowrtest.netlify.app", methods: ["GET", "POST"] }
+  cors: {
+    origin: "*", // for testing; replace with "https://flowrtest.netlify.app" in production
+    methods: ["GET", "POST"]
+  }
 });
 
 // --- Accounts (Supabase REST API, hashed passwords) ---
@@ -106,6 +109,23 @@ const rarityMultipliers = {
   ultra: 729
 };
 
+// --- Bone Petal factory ---
+function createBonePetal(rarity = "common") {
+  const mult = rarityMultipliers[rarity] || 1;
+  return {
+    name: "Bone",
+    color: "gray",
+    image: "/assets/bone.png",
+    damage: 30 * mult,
+    health: 75 * mult,
+    maxHealth: 75 * mult,
+    description: `${rarity} Bone petal. Grants +50% max health per Bone equipped.`,
+    reload: 3000,
+    reloadUntil: 0,
+    rarity
+  };
+}
+
 function spawnItem(x, y, color = "cyan", rarity = "common") {
   const id = `item_${Math.random().toString(36).slice(2, 9)}`;
   const radius = 8;
@@ -124,6 +144,7 @@ function spawnItem(x, y, color = "cyan", rarity = "common") {
   });
   return id;
 }
+
 function distance(ax, ay, bx, by) {
   return Math.hypot(ax - bx, ay - by);
 }
@@ -147,6 +168,7 @@ function broadcastPlayerUpdate(p) {
     username: p.username,
     orbitDist: p.orbitDist,
     health: p.health,
+    maxHealth: p.maxHealth,
     invincibleUntil: p.invincibleUntil || 0
   });
 }
@@ -211,27 +233,29 @@ function spawnMob(x, y) {
   const baseHealth = 100;
   const baseSize = 40;
 
-  //declare radius here
   const radius = baseSize * (1 + 0.5 * zoneIndex);
 
   mobs.set(id, {
     id,
     x,
     y,
-    radius, // just reference it here
+    radius,
     damage: baseDamage * mult,
     health: baseHealth * mult,
     maxHealth: baseHealth * mult,
     rarity,
     color: "purple",
-    targetId: null
+    targetId: null,
+    type: "beetle" // mark type for drops
   });
 
   return id;
 }
+
+// --- Socket.IO handlers ---
 function createPendingPlayer(id, username = null) {
-  const spawnX = 20;                  // left edge, offset by radius
-  const spawnY = world.height / 2;    // vertically centered
+  const spawnX = 20;
+  const spawnY = world.height / 2;
 
   return {
     id,
@@ -246,26 +270,25 @@ function createPendingPlayer(id, username = null) {
     username,
     orbitDist: 56,
     health: 100,
+    maxHealth: 100,
     invincibleUntil: 0,
-
-    //  store original spawn point for reuse
     spawnX,
     spawnY
   };
 }
-/* ===========================
-   Socket.IO handlers
-   =========================== */
+
 io.on("connection", (socket) => {
   const id = socket.id;
   let authedUser = null;
+
   const pendingPlayer = createPendingPlayer(id);
+
   // --- Authentication ---
   socket.on("auth", async ({ token, username }) => {
     try {
       const response = await fetch(
         `${supabaseUrl}/rest/v1/users?username=eq.${encodeURIComponent(username)}`,
-        { headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` } }
+                { headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` } }
       );
       const data = await response.json();
       if (data.length === 0) return socket.emit("auth_failed");
@@ -282,7 +305,7 @@ io.on("connection", (socket) => {
       socket.emit("auth_success", { username: authedUser.username });
     } catch (err) {
       console.error("Auth error:", err);
-            socket.emit("auth_failed");
+      socket.emit("auth_failed");
     }
   });
 
@@ -302,7 +325,7 @@ io.on("connection", (socket) => {
     pendingPlayer.username = username;
 
     if (!pendingPlayer.hotbar || pendingPlayer.hotbar.length === 0) {
-      const starterColors = Array(10).fill("white");
+      const starterColors = Array(9).fill("white");
       pendingPlayer.hotbar = starterColors.map(c => {
         const rarity = "unusual";
         const mult = rarityMultipliers[rarity];
@@ -318,6 +341,9 @@ io.on("connection", (socket) => {
           rarity
         };
       });
+
+      // ✅ Add one Bone Petal starter
+      pendingPlayer.hotbar.push(createBonePetal("common"));
     }
 
     if (!pendingPlayer.inventory || pendingPlayer.inventory.length === 0) {
@@ -416,15 +442,15 @@ io.on("connection", (socket) => {
 
   // Respawn
   socket.on("respawn_request", () => {
-  const p = players.get(id);
-  if (!p) return;
-  p.x = p.spawnX;
-  p.y = p.spawnY;
-  p.health = 100;
-  p.invincibleUntil = Date.now() + 2000;
-  broadcastPlayerUpdate(p);
-  socket.emit("respawn_success", p);
-});
+    const p = players.get(id);
+    if (!p) return;
+    p.x = p.spawnX;
+    p.y = p.spawnY;
+    p.health = p.maxHealth;  // reset health to max
+    p.invincibleUntil = Date.now() + 2000;
+    broadcastPlayerUpdate(p);
+    socket.emit("respawn_success", p);
+  });
 
   // Disconnect
   socket.on("disconnect", () => {
@@ -444,6 +470,13 @@ setInterval(() => {
   // Player orbit combat (vs players and mobs)
   players.forEach(p => {
     if (p.health <= 0) return;
+
+    // ✅ Bone bonus: +50% max health per Bone equipped
+    const boneCount = p.hotbar.filter(i => i && i.name === "Bone").length;
+    const baseMaxHealth = 100;
+    p.maxHealth = baseMaxHealth + baseMaxHealth * 0.5 * boneCount;
+    if (p.health > p.maxHealth) p.health = p.maxHealth;
+
     p.orbitAngle += p.orbitSpeed;
 
     const equipped = p.hotbar.filter(i => i);
@@ -478,26 +511,40 @@ setInterval(() => {
         });
 
         // Damage mobs
-mobs.forEach(m => {
-  if (m.health <= 0) return;
-  const distToMob = distance(petalX, petalY, m.x, m.y);
-  if (distToMob < m.radius + 8) {
-    m.health -= item.damage;
+        mobs.forEach(m => {
+          if (m.health <= 0) return;
+          const distToMob = distance(petalX, petalY, m.x, m.y);
+          if (distToMob < m.radius + 8) {
+            m.health -= item.damage;
 
-    // Petal also takes damage when hitting a mob
-    item.health -= m.damage;
-    if (item.health <= 0) {
-      item.reloadUntil = now + item.reload;
-      item.health = item.maxHealth;
-    }
+            // ✅ Petal also takes damage when hitting a mob
+            item.health -= m.damage;
+            if (item.health <= 0) {
+              item.reloadUntil = now + item.reload;
+              item.health = item.maxHealth;
+            }
 
-    if (m.health <= 0) {
-      m.health = 0;
-      mobs.delete(m.id);
-      io.emit("mob_dead", { id: m.id });
-    }
-  }
-});
+            if (m.health <= 0) {
+              m.health = 0;
+              mobs.delete(m.id);
+              io.emit("mob_dead", { id: m.id });
+
+                            // ✅ Drop a Bone Petal when a beetle mob dies
+              if (m.type === "beetle") {
+                const bone = createBonePetal(m.rarity);
+                const itemId = `item_${Math.random().toString(36).slice(2, 9)}`;
+                items.set(itemId, {
+                  id: itemId,
+                  x: m.x,
+                  y: m.y,
+                  radius: 8,
+                  ...bone
+                });
+                broadcastItems();
+              }
+            }
+          }
+        });
       });
     }
     broadcastPlayerUpdate(p);
