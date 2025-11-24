@@ -10,7 +10,7 @@ app.use(cors());
 app.use(express.json()); // allow JSON body parsing
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  cors: { origin: "*", methods: ["GET", "POST"] }
+  cors: { origin: "https://flowrtest.netlify.app", methods: ["GET", "POST"] }
 });
 
 // --- Accounts (Supabase REST API, hashed passwords) ---
@@ -409,15 +409,15 @@ io.on("connection", (socket) => {
 
   // Respawn
   socket.on("respawn_request", () => {
-    const p = players.get(id);
-    if (!p) return;
-    player.x = world.centerX;
-player.y = world.centerY;
-player.health = 100;  // reset health
-    p.invincibleUntil = Date.now() + 2000;
-    broadcastPlayerUpdate(p);
-    socket.emit("respawn_success", p);
-  });
+  const p = players.get(id);
+  if (!p) return;
+  p.x = world.centerX;
+  p.y = world.centerY;
+  p.health = 100;  // reset health
+  p.invincibleUntil = Date.now() + 2000;
+  broadcastPlayerUpdate(p);
+  socket.emit("respawn_success", p);
+});
 
   // Disconnect
   socket.on("disconnect", () => {
