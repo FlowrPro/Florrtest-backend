@@ -571,61 +571,55 @@ if (equipped.length > 0) {
     });
 
     // Damage mobs
-    mobs.forEach(m => {
-      if (m.health <= 0) return;
-      const distToMob = distance(petalX, petalY, m.x, m.y);
-      if (distToMob < m.radius + (item.radius || 8)) {         // ✅ use item.radius
-        m.health -= dmg;
+mobs.forEach(m => {
+  if (m.health <= 0) return;
+  const distToMob = distance(petalX, petalY, m.x, m.y);
+  if (distToMob < m.radius + (item.radius || 8)) {   // ✅ use item.radius
+    m.health -= dmg;
 
-        // Track who damaged this mob
-        if (!m.damageDealers) m.damageDealers = new Set();
-        m.damageDealers.add(p.id);
+    // Track who damaged this mob
+    if (!m.damageDealers) m.damageDealers = new Set();
+    m.damageDealers.add(p.id);
 
-        // Petal takes damage
-        item.health -= p.isAdmin ? m.damage * 2 : m.damage;
-        if (item.health <= 0) {
-          item.reloadUntil = now + item.reload;
-          item.health = item.maxHealth;
-        }
+    // Petal takes damage
+    item.health -= p.isAdmin ? m.damage * 2 : m.damage;
+    if (item.health <= 0) {
+      item.reloadUntil = now + item.reload;
+      item.health = item.maxHealth;
+    }
 
-        if (m.health <= 0) {
-          m.health = 0;
-          mobs.delete(m.id);
-          io.emit("mob_dead", { id: m.id });
+    if (m.health <= 0) {
+      m.health = 0;
+      mobs.delete(m.id);
+      io.emit("mob_dead", { id: m.id });
 
-          // Drop a Bone Petal when a beetle mob dies
-          if (m.type === "beetle") {
-            const bone = createBonePetal(m.rarity);
-            const itemId = `item_${Math.random().toString(36).slice(2, 9)}`;
-            const drop = {
-              id: itemId,
-              x: m.x,
-              y: m.y,
-              radius: 16,   // bigger than basic petal
-              ...bone
-            };
+      // Drop a Bone Petal when a beetle mob dies
+      if (m.type === "beetle") {
+        const bone = createBonePetal(m.rarity);
+        const itemId = `item_${Math.random().toString(36).slice(2, 9)}`;
+        const drop = {
+          id: itemId,
+          x: m.x,
+          y: m.y,
+          radius: 16,   // bigger than basic petal
+          ...bone
+        };
 
-            items.set(itemId, drop);
+        items.set(itemId, drop);
 
-            m.damageDealers.forEach(playerId => {
-              const dmgPlayer = players.get(playerId);
-              if (dmgPlayer && dmgPlayer.socket) {
-                dmgPlayer.socket.emit("item_spawn", drop);
-              }
-            });
-          }
-        }
-      }
-    });
-  });
-}
-            item.health -= hpLoss;
-            if (item.health <= 0) {
-              item.reloadUntil = now + item.reload;
-              item.health = item.maxHealth;
-            }
+        m.damageDealers.forEach(playerId => {
+          const dmgPlayer = players.get(playerId);
+          if (dmgPlayer && dmgPlayer.socket) {
+            dmgPlayer.socket.emit("item_spawn", drop);
           }
         });
+      }
+    }
+  }
+}); // closes mobs.forEach
+}); // closes equipped.forEach
+}   // closes if (equipped.length > 0)
+            
 
         // Damage mobs
         mobs.forEach(m => {
