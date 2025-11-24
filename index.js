@@ -3,6 +3,7 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import crypto from "crypto"; // built-in, no install needed
+
 // --- Server setup ---
 const app = express();
 app.use(cors());
@@ -107,6 +108,9 @@ const rarityMultipliers = {
   mythic: 243,
   ultra: 729
 };
+
+// --- Admin username ---
+const ADMIN_USERNAME = "CharmedZ";
 
 // --- Bone Petal factory ---
 function createBonePetal(rarity = "common") {
@@ -282,12 +286,12 @@ io.on("connection", (socket) => {
 
   const pendingPlayer = createPendingPlayer(id);
 
-  // --- Authentication ---
+    // --- Authentication ---
   socket.on("auth", async ({ token, username }) => {
     try {
       const response = await fetch(
         `${supabaseUrl}/rest/v1/users?username=eq.${encodeURIComponent(username)}`,
-                { headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` } }
+        { headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` } }
       );
       const data = await response.json();
       if (data.length === 0) return socket.emit("auth_failed");
@@ -321,7 +325,29 @@ io.on("connection", (socket) => {
       socket.emit("error", { message: "Not authenticated" });
       return;
     }
+
     pendingPlayer.username = username;
+
+    // ✅ Admin buffs for CharmedZ
+    if (username === ADMIN_USERNAME) {
+      pendingPlayer.speed *= 3;
+      pendingPlayer.isAdmin = true;
+
+      // Give 20 ultra Bones
+      for (let i = 0; i < 20; i++) {
+        const existing = pendingPlayer.inventory.find(slot =>
+          slot && slot.item.name === "Bone" && slot.item.rarity === "ultra"
+        );
+        if (existing) {
+          existing.count += 1;
+        } else {
+          const emptyIdx = pendingPlayer.inventory.findIndex(s => s === null);
+          if (emptyIdx !== -1) {
+            pendingPlayer.inventory[emptyIdx] = { item: createBonePetal("ultra"), count: 1 };
+          }
+        }
+      }
+    }
 
     if (!pendingPlayer.hotbar || pendingPlayer.hotbar.length === 0) {
       const starterColors = Array(9).fill("white");
@@ -399,21 +425,21 @@ io.on("connection", (socket) => {
     const d = distance(p.x, p.y, it.x, it.y);
     if (d < p.radius + it.radius) {
       const existing = p.inventory.find(slot =>
-  slot && slot.item.name === it.name && slot.item.rarity === it.rarity
-);
+        slot && slot.item.name === it.name && slot.item.rarity === it.rarity
+      );
 
-if (existing) {
-  existing.count += 1;
-} else {
-  const emptyIdx = p.inventory.findIndex(s => s === null);
-  if (emptyIdx !== -1) {
-    p.inventory[emptyIdx] = { item: { ...it }, count: 1 };
-  }
-}
-items.delete(itemId);
-socket.emit("inventory_update", p.inventory);
-broadcastItems();
-savePlayerState(p.username, p.inventory, p.hotbar);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        const emptyIdx = p.inventory.findIndex(s => s === null);
+        if (emptyIdx !== -1) {
+          p.inventory[emptyIdx] = { item: { ...it }, count: 1 };
+        }
+      }
+      items.delete(itemId);
+      socket.emit("inventory_update", p.inventory);
+      broadcastItems();
+      savePlayerState(p.username, p.inventory, p.hotbar);
     }
   });
 
@@ -422,15 +448,15 @@ savePlayerState(p.username, p.inventory, p.hotbar);
     const p = players.get(id);
     if (!p) return;
     const slot = p.inventory[invIndex];
-if (!slot) return;
+    if (!slot) return;
 
-if (slot.count > 1) {
-  slot.count -= 1;
-  p.hotbar[hotbarIndex] = { ...slot.item };
-} else {
-  p.hotbar[hotbarIndex] = slot.item;
-  p.inventory[invIndex] = null;
-}
+    if (slot.count > 1) {
+      slot.count -= 1;
+      p.hotbar[hotbarIndex] = { ...slot.item };
+    } else {
+      p.hotbar[hotbarIndex] = slot.item;
+      p.inventory[invIndex] = null;
+    }
     socket.emit("inventory_update", p.inventory);
     socket.emit("hotbar_update", p.hotbar);
     broadcastPlayerUpdate(p);
@@ -439,31 +465,31 @@ if (slot.count > 1) {
 
   // Unequip
   socket.on("unequip_request", ({ hotbarIndex }) => {
-  const p = players.get(id);
-  if (!p) return;
-  const item = p.hotbar[hotbarIndex];
-  if (!item) return;
+    const p = players.get(id);
+    if (!p) return;
+    const item = p.hotbar[hotbarIndex];
+    if (!item) return;
 
-  // Try to stack into existing slot
-  const existing = p.inventory.find(slot =>
-    slot && slot.item.name === item.name && slot.item.rarity === item.rarity
-  );
+    // Try to stack into existing slot
+    const existing = p.inventory.find(slot =>
+      slot && slot.item.name === item.name && slot.item.rarity === item.rarity
+    );
 
-  if (existing) {
-    existing.count += 1;
-  } else {
-    const emptyIdx = p.inventory.findIndex(s => s === null);
-    if (emptyIdx === -1) return;
-    p.inventory[emptyIdx] = { item: { ...item }, count: 1 };
-  }
+    if (existing) {
+      existing.count += 1;
+    } else {
+      const emptyIdx = p.inventory.findIndex(s => s === null);
+      if (emptyIdx === -1) return;
+      p.inventory[emptyIdx] = { item: { ...item }, count: 1 };
+    }
 
-  p.hotbar[hotbarIndex] = null;
+    p.hotbar[hotbarIndex] = null;
 
-  socket.emit("inventory_update", p.inventory);
-  socket.emit("hotbar_update", p.hotbar);
-  broadcastPlayerUpdate(p);
-  savePlayerState(p.username, p.inventory, p.hotbar);
-});
+    socket.emit("inventory_update", p.inventory);
+    socket.emit("hotbar_update", p.hotbar);
+    broadcastPlayerUpdate(p);
+    savePlayerState(p.username, p.inventory, p.hotbar);
+  });
 
   // Respawn
   socket.on("respawn_request", () => {
@@ -510,8 +536,12 @@ setInterval(() => {
       equipped.forEach((item, idx) => {
         if (item.reloadUntil && now < item.reloadUntil) return;
         const angle = p.orbitAngle + idx * angleStep;
-        const petalX = p.x + (p.orbitDist || 56) * Math.cos(angle);
+                const petalX = p.x + (p.orbitDist || 56) * Math.cos(angle);
         const petalY = p.y + (p.orbitDist || 56) * Math.sin(angle);
+
+        // ✅ Admin scaling
+        const dmg = p.isAdmin ? item.damage * 2 : item.damage;
+        const hpLoss = p.isAdmin ? item.damage * 2 : item.damage;
 
         // Damage other players
         players.forEach(other => {
@@ -519,7 +549,7 @@ setInterval(() => {
           const distToOther = distance(petalX, petalY, other.x, other.y);
           if (distToOther < other.radius + 8) {
             if (other.invincibleUntil && now < other.invincibleUntil) return;
-            other.health -= item.damage;
+            other.health -= dmg;
             if (other.health <= 0) {
               other.health = 0;
               broadcastPlayerUpdate(other);
@@ -527,7 +557,7 @@ setInterval(() => {
             } else {
               broadcastPlayerUpdate(other);
             }
-            item.health -= item.damage;
+            item.health -= hpLoss;
             if (item.health <= 0) {
               item.reloadUntil = now + item.reload;
               item.health = item.maxHealth;
@@ -540,10 +570,10 @@ setInterval(() => {
           if (m.health <= 0) return;
           const distToMob = distance(petalX, petalY, m.x, m.y);
           if (distToMob < m.radius + 8) {
-            m.health -= item.damage;
+            m.health -= dmg;
 
             // ✅ Petal also takes damage when hitting a mob
-            item.health -= m.damage;
+            item.health -= p.isAdmin ? m.damage * 2 : m.damage;
             if (item.health <= 0) {
               item.reloadUntil = now + item.reload;
               item.health = item.maxHealth;
@@ -554,7 +584,7 @@ setInterval(() => {
               mobs.delete(m.id);
               io.emit("mob_dead", { id: m.id });
 
-                            // ✅ Drop a Bone Petal when a beetle mob dies
+              // ✅ Drop a Bone Petal when a beetle mob dies
               if (m.type === "beetle") {
                 const bone = createBonePetal(m.rarity);
                 const itemId = `item_${Math.random().toString(36).slice(2, 9)}`;
