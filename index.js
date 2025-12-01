@@ -624,42 +624,80 @@ setInterval(() => {
     broadcastPlayerUpdate(p);
   });       // closes players.forEach
 
-  // Mob AI movement + damage
-  mobs.forEach(m => {
-    if (m.health <= 0) return;
-    let nearest = null, nearestDist = Infinity;
-    players.forEach(p => {
-      if (p.health <= 0) return;
-      const d = distance(m.x, m.y, p.x, p.y);
-      if (d < nearestDist) { nearest = p; nearestDist = d; }
-    });
-    if (nearest && nearestDist < 600) {
-      m.targetId = nearest.id;
-      const dx = nearest.x - m.x, dy = nearest.y - m.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist > 0) {
-        const speed = 3;
-        m.x += (dx / dist) * speed;
-        m.y += (dy / dist) * speed;
-      }
-      if (dist < m.radius + nearest.radius) {
-        if (!(nearest.invincibleUntil && now < nearest.invincibleUntil)) {
-          nearest.health -= m.damage;
-          if (nearest.health <= 0) {
-            nearest.health = 0;
-            broadcastPlayerUpdate(nearest);
-            io.to(nearest.id).emit("player_dead");
-          } else {
-            broadcastPlayerUpdate(nearest);
+  setInterval(() => {
+  const now = Date.now();
+
+  // --- Player orbit combat (vs players and mobs) ---
+  players.forEach(p => {
+    if (p.health <= 0) return;
+
+    // Bone bonus
+    const boneCount = p.hotbar.filter(i => i && i.name === "Bone").length;
+    const baseMaxHealth = 100;
+    p.maxHealth = baseMaxHealth + baseMaxHealth * 0.5 * boneCount;
+    if (p.health > p.maxHealth) p.health = p.maxHealth;
+
+    p.orbitAngle += p.orbitSpeed;
+
+    const equipped = p.hotbar.filter(i => i);
+    if (equipped.length > 0) {
+      const angleStep = (2 * Math.PI) / equipped.length;
+      equipped.forEach((item, idx) => {
+        if (item.reloadUntil && now < item.reloadUntil) return;
+        const angle = p.orbitAngle + idx * angleStep;
+        const petalX = p.x + (p.orbitDist || 56) * Math.cos(angle);
+        const petalY = p.y + (p.orbitDist || 56) * Math.sin(angle);
+
+        // ✅ Damage other players (your existing code)
+
+        // ✅ Damage mobs (this is where the bone drop block goes)
+        mobs.forEach(m => {
+          if (m.health <= 0) return;
+          const distToMob = distance(petalX, petalY, m.x, m.y);
+          if (distToMob < m.radius + (item.radius || 8)) {
+            m.health -= dmg;
+            m.damageDealers.add(p.id);
+
+            item.health -= p.isAdmin ? m.damage * 2 : m.damage;
+            if (item.health <= 0) {
+              item.reloadUntil = now + item.reload;
+              item.health = item.maxHealth;
+            }
+
+            if (m.health <= 0) {
+              m.health = 0;
+              mobs.delete(m.id);
+              io.emit("mob_dead", { id: m.id });
+
+              // ✅ Bone drop logic
+              if (m.type === "beetle") {
+                const bone = createBonePetal(m.rarity);
+                const itemId = `item_${Math.random().toString(36).slice(2, 9)}`;
+                const drop = { id: itemId, x: m.x, y: m.y, radius: 16, ...bone };
+                items.set(itemId, drop);
+
+                m.damageDealers.forEach(playerId => {
+                  const dmgPlayer = players.get(playerId);
+                  if (dmgPlayer && dmgPlayer.socket) {
+                    dmgPlayer.socket.emit("item_spawn", drop);
+                  }
+                });
+              }
+            }
           }
-        }
-      }
-    } else {
-      m.targetId = null;
+        });
+      });
     }
+
+    broadcastPlayerUpdate(p);
   });
 
-  // Mob spawning with per-zone caps
+  // --- Mob AI movement + damage ---
+  mobs.forEach(m => {
+    // your AI chase/attack code here
+  });
+
+  // --- Mob spawning ---
   for (let zoneIndex = 0; zoneIndex < rarityZones.length; zoneIndex++) {
     if (countMobsInZone(zoneIndex) < maxMobsPerZone) {
       const x = zoneIndex * zoneWidth + Math.random() * zoneWidth;
@@ -668,7 +706,7 @@ setInterval(() => {
     }
   }
 
-  // Despawn mobs older than 60s
+  // --- Mob despawn ---
   mobs.forEach(m => {
     if (Date.now() - m.spawnTime > 60000) {
       mobs.delete(m.id);
@@ -676,7 +714,7 @@ setInterval(() => {
     }
   });
 
-  // Broadcast mobs each tick
+  // --- Broadcast mobs each tick ---
   broadcastMobs();
 }, 50);
 
