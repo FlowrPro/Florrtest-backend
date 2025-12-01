@@ -75,7 +75,7 @@ app.post("/login", async (req, res) => {
   if (data.length === 0) return res.status(400).json({ error: "No such user" });
   if (data[0].password !== hashed) return res.status(400).json({ error: "Invalid password" });
 
-  const token = Math.random().toString(36).substring(2);
+  const token = crypto.randomBytes(32).toString("hex");
 
   const patchRes = await fetch(`${supabaseUrl}/rest/v1/users?username=eq.${username}`, {
     method: "PATCH",
@@ -668,9 +668,26 @@ setInterval(() => {
     }
   }
 
+  // Despawn mobs older than 60s
+  mobs.forEach(m => {
+    if (Date.now() - m.spawnTime > 60000) {
+      mobs.delete(m.id);
+      io.emit("mob_dead", { id: m.id });
+    }
+  });
+
   // Broadcast mobs each tick
   broadcastMobs();
 }, 50);
+
+// ✅ Autosave OUTSIDE the 50ms loop
+setInterval(() => {
+  players.forEach(p => {
+    if (p.username) {
+      savePlayerState(p.username, p.inventory, p.hotbar);
+    }
+  });
+}, 30000);
 
 // Health check endpoint
 app.get("/", (_req, res) => res.send("Florr backend OK"));
