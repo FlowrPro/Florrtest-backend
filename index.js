@@ -256,12 +256,13 @@ function spawnMob(x, y) {
 }
 
 // --- Socket.IO handlers ---
-function createPendingPlayer(id, username = null) {
+function createPendingPlayer(id, socket, username = null) {
   const spawnX = 20;
   const spawnY = world.height / 2;
 
   return {
     id,
+    socket,   // ✅ keep socket reference here
     x: spawnX,
     y: spawnY,
     radius: 20,
@@ -284,7 +285,7 @@ io.on("connection", (socket) => {
   const id = socket.id;
   let authedUser = null;
 
-  const pendingPlayer = createPendingPlayer(id);
+  const pendingPlayer = createPendingPlayer(id, socket);
 
     // --- Authentication ---
   socket.on("auth", async ({ token, username }) => {
