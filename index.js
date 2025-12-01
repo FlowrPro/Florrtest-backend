@@ -6,13 +6,29 @@ import crypto from "crypto"; // built-in, no install needed
 
 // --- Server setup ---
 const app = express();
-app.use(cors());
+
+// ✅ Allow your Netlify frontend domain (and localhost for dev)
+app.use(cors({
+  origin: [
+    "https://clashdotbeta.netlify.app", // your deployed frontend
+    "http://localhost:3000"             // dev server (optional)
+  ],
+  methods: ["GET", "POST"],
+  credentials: true
+}));
+
 app.use(express.json()); // allow JSON body parsing
+
 const httpServer = createServer(app);
+
 const io = new Server(httpServer, {
   cors: {
-    origin: "*", // for testing; replace with "https://flowrtest.netlify.app" in production
-    methods: ["GET", "POST"]
+    origin: [
+      "https://clashdotbeta.netlify.app",
+      "http://localhost:3000"
+    ],
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
